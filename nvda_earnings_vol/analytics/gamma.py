@@ -14,7 +14,10 @@ from nvda_earnings_vol.config import (
 
 
 def gex_summary(
-    chain: pd.DataFrame, spot: float, t: float, gex_range_pct: float = GEX_RANGE_PCT
+    chain: pd.DataFrame,
+    spot: float,
+    t: float,
+    gex_range_pct: float = GEX_RANGE_PCT,
 ) -> dict[str, float]:
     """Compute net and absolute gamma exposure.
 
@@ -24,7 +27,9 @@ def gex_summary(
     if gex_range_pct > 0:
         lower = spot * (1 - gex_range_pct)
         upper = spot * (1 + gex_range_pct)
-        chain = chain[(chain["strike"] >= lower) & (chain["strike"] <= upper)].copy()
+        chain = chain[
+            (chain["strike"] >= lower) & (chain["strike"] <= upper)
+        ].copy()
     if chain.empty:
         return {"net_gex": 0.0, "abs_gex": 0.0}
     chain["gamma"] = chain.apply(

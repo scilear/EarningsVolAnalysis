@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from nvda_earnings_vol.data.loader import get_options_chain, _raise_if_market_closed
+from nvda_earnings_vol.data.loader import (
+    _raise_if_market_closed,
+    get_options_chain,
+)
 
 
 def test_cache_load_parses_expiry() -> None:
@@ -14,7 +17,8 @@ def test_cache_load_parses_expiry() -> None:
     stamp = dt.date.today().strftime("%Y%m%d")
     with tempfile.TemporaryDirectory() as temp_dir:
         cache_dir = Path(temp_dir)
-        cache_path = cache_dir / f"NVDA_{expiry.strftime('%Y%m%d')}_{stamp}.csv"
+        cache_name = f"NVDA_{expiry.strftime('%Y%m%d')}_{stamp}.csv"
+        cache_path = cache_dir / cache_name
         chain = pd.DataFrame(
             {
                 "strike": [100.0],

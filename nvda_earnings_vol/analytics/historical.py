@@ -12,7 +12,10 @@ import pandas as pd
 LOGGER = logging.getLogger(__name__)
 
 
-def earnings_move_p75(history: pd.DataFrame, earnings_dates: list[pd.Timestamp]) -> float:
+def earnings_move_p75(
+    history: pd.DataFrame,
+    earnings_dates: list[pd.Timestamp],
+) -> float:
     """Return 75th percentile of absolute earnings gap moves."""
     if history.empty:
         raise ValueError("No price history available.")
@@ -53,14 +56,20 @@ def _event_trading_day(
     return _next_trading_day(trading_days, target_date)
 
 
-def _next_trading_day(trading_days: list[dt.date], target: dt.date) -> dt.date | None:
+def _next_trading_day(
+    trading_days: list[dt.date],
+    target: dt.date,
+) -> dt.date | None:
     for day in trading_days:
         if day >= target:
             return day
     return None
 
 
-def _prev_trading_day(trading_days: list[dt.date], target: dt.date | None) -> dt.date | None:
+def _prev_trading_day(
+    trading_days: list[dt.date],
+    target: dt.date | None,
+) -> dt.date | None:
     if target is None:
         return None
     prev = None

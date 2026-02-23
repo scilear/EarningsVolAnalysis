@@ -55,7 +55,10 @@ def _warn_wide_spread(call_row: pd.Series, put_row: pd.Series) -> None:
     call_pct = call_spread / call_mid if call_mid > 0 else float("inf")
     put_pct = put_spread / put_mid if put_mid > 0 else float("inf")
 
-    if call_pct > IMPLIED_MOVE_MAX_SPREAD_PCT or put_pct > IMPLIED_MOVE_MAX_SPREAD_PCT:
+    if (
+        call_pct > IMPLIED_MOVE_MAX_SPREAD_PCT
+        or put_pct > IMPLIED_MOVE_MAX_SPREAD_PCT
+    ):
         LOGGER.warning(
             "ATM spread exceeds %.2f%% of mid (call=%.2f%%, put=%.2f%%)",
             IMPLIED_MOVE_MAX_SPREAD_PCT * 100,

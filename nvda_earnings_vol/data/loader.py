@@ -65,7 +65,12 @@ def get_options_chain(
         cache_name = f"{ticker}_{expiry.strftime('%Y%m%d')}_{stamp}.csv"
         cache_path = cache_dir / cache_name
 
-    if use_cache and cache_path is not None and cache_path.exists() and not refresh_cache:
+    if (
+        use_cache
+        and cache_path is not None
+        and cache_path.exists()
+        and not refresh_cache
+    ):
         LOGGER.info("Loading options chain from cache: %s", cache_path)
         chain = pd.read_csv(cache_path, parse_dates=["expiry"])
         if "expiry" not in chain.columns:
@@ -143,5 +148,6 @@ def _raise_if_market_closed(chain: pd.DataFrame) -> None:
     asks = chain["ask"].fillna(0.0)
     if (bids == 0).all() and (asks == 0).all():
         raise ValueError(
-            "Options bid/ask are all 0.00; market appears closed or data unavailable."
+            "Options bid/ask are all 0.00; market appears closed or "
+            "data unavailable."
         )

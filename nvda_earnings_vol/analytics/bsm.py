@@ -7,14 +7,31 @@ import math
 from scipy.stats import norm
 
 
-def _d1(spot: float, strike: float, t: float, r: float, q: float, vol: float) -> float:
+def _d1(
+    spot: float,
+    strike: float,
+    t: float,
+    r: float,
+    q: float,
+    vol: float,
+) -> float:
     if t <= 0 or vol <= 0:
         return 0.0
-    return (math.log(spot / strike) + (r - q + 0.5 * vol**2) * t) / (vol * math.sqrt(t))
+    numerator = math.log(spot / strike) + (r - q + 0.5 * vol**2) * t
+    return numerator / (vol * math.sqrt(t))
 
 
-def _d2(spot: float, strike: float, t: float, r: float, q: float, vol: float) -> float:
-    return _d1(spot, strike, t, r, q, vol) - vol * math.sqrt(t) if t > 0 else 0.0
+def _d2(
+    spot: float,
+    strike: float,
+    t: float,
+    r: float,
+    q: float,
+    vol: float,
+) -> float:
+    if t <= 0:
+        return 0.0
+    return _d1(spot, strike, t, r, q, vol) - vol * math.sqrt(t)
 
 
 def option_price(
@@ -38,9 +55,21 @@ def option_price(
     d2 = _d2(spot, strike, t, r, q, vol)
 
     if option_type == "call":
-        return math.exp(-q * t) * spot * norm.cdf(d1) - math.exp(-r * t) * strike * norm.cdf(d2)
+        discounted_spot = math.exp(-q * t) * spot
+        discounted_strike = math.exp(-r * t) * strike
+        value = (
+            discounted_spot * norm.cdf(d1)
+            - discounted_strike * norm.cdf(d2)
+        )
+        return value
     if option_type == "put":
-        return math.exp(-r * t) * strike * norm.cdf(-d2) - math.exp(-q * t) * spot * norm.cdf(-d1)
+        discounted_spot = math.exp(-q * t) * spot
+        discounted_strike = math.exp(-r * t) * strike
+        value = (
+            discounted_strike * norm.cdf(-d2)
+            - discounted_spot * norm.cdf(-d1)
+        )
+        return value
     raise ValueError("option_type must be 'call' or 'put'")
 
 
@@ -70,7 +99,12 @@ def option_delta(
 
 
 def option_gamma(
-    spot: float, strike: float, t: float, r: float, q: float, vol: float
+    spot: float,
+    strike: float,
+    t: float,
+    r: float,
+    q: float,
+    vol: float,
 ) -> float:
     """Return BSM gamma."""
     if t <= 0 or vol <= 0:

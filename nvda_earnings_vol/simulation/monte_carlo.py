@@ -24,7 +24,9 @@ def simulate_moves(
     sigma_1d = event_vol / math.sqrt(252.0)
     rng = np.random.default_rng(seed)
     z = rng.standard_normal(simulations)
-    moves = np.exp(-0.5 * sigma_1d**2 + sigma_1d * z) - 1.0
+    moves = np.exp(
+        -0.5 * sigma_1d**2 + sigma_1d * z
+    ) - 1.0
     _validate(moves, sigma_1d)
     return moves
 
