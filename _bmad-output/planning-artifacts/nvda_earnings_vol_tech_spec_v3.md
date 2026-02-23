@@ -1,4 +1,4 @@
-# Tech-Spec: NVDA Earnings Volatility & Options Structure Analysis Engine (v3)
+# Tech-Spec: NVDA Earnings Volatility & Options Structure Analysis Engine (v3.2 — Mathematical Consistency & Robustness Enforcement)
 
 Created: 2026-02-23
 Status: done

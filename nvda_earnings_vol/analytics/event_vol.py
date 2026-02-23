@@ -47,26 +47,18 @@ def event_variance(
             business_days(dt.date.today(), back2_expiry) / 252.0,
             TIME_EPSILON,
         )
-        if _is_flat_term_structure(front_iv, back1_iv, back2_iv):
-            tv_pre = t_front * back1_iv**2
-            assumption = "Flat term structure"
-        else:
-            # tv_pre is already total variance (T * IV^2); no extra scaling.
-            tv_pre = _linear_interp(
-                t_back1,
-                t_back1 * back1_iv**2,
-                t_back2,
-                t_back2 * back2_iv**2,
-                max(t_front - dt_event, TIME_EPSILON),
-            )
-            assumption = "Term structure interpolation"
+        # tv_pre is already total variance (T * IV^2); no extra scaling.
+        tv_pre = _linear_interp(
+            t_back1,
+            t_back1 * back1_iv**2,
+            t_back2,
+            t_back2 * back2_iv**2,
+            max(t_front - dt_event, TIME_EPSILON),
+        )
+        assumption = "Term structure interpolation"
     else:
-        if _is_flat_term_structure(front_iv, back1_iv, None):
-            tv_pre = t_front * back1_iv**2
-            assumption = "Flat term structure"
-        else:
-            tv_pre = max(t_front - dt_event, TIME_EPSILON) * back1_iv**2
-            assumption = "Single-point term structure assumption"
+        tv_pre = max(t_front - dt_event, TIME_EPSILON) * back1_iv**2
+        assumption = "Single-point term structure assumption"
 
     raw_event_var = (t_front * front_iv**2 - tv_pre) / dt_event
     ratio = abs(raw_event_var) / max(front_iv**2, TIME_EPSILON)
@@ -99,14 +91,3 @@ def _linear_interp(
         return y1
     weight = (x_target - x1) / (x2 - x1)
     return y1 + weight * (y2 - y1)
-
-
-def _is_flat_term_structure(
-    front_iv: float,
-    back1_iv: float,
-    back2_iv: float | None,
-) -> bool:
-    tol = 1e-6
-    if back2_iv is None:
-        return abs(front_iv - back1_iv) < tol
-    return abs(front_iv - back1_iv) < tol and abs(back1_iv - back2_iv) < tol

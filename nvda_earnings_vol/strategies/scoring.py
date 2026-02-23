@@ -51,11 +51,12 @@ def compute_metrics(
         np.mean(np.sort(pnls)[: max(int(0.05 * len(pnls)), 1)])
     )
     convexity = _convexity(pnls)
-    robustness = (
-        float(robustness_override)
-        if robustness_override is not None
-        else 1.0 / (float(np.std(pnls)) + 1e-9)
-    )
+    if robustness_override is None:
+        raise ValueError(
+            "robustness_override is required. Standalone P&L std is not a "
+            "valid robustness metric."
+        )
+    robustness = float(robustness_override)
 
     max_loss = float(np.min(pnls))
     expected_move_dollar = max(implied_move, historical_p75) * spot * 100

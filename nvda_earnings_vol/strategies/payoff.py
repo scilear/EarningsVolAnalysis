@@ -180,8 +180,7 @@ def _post_iv(
         else:
             target_atm = base_atm * (1 + float(shift))
 
-    if atm_iv <= 0:
-        return max(target_atm, TIME_EPSILON)
+    atm_iv = max(atm_iv, TIME_EPSILON)
     # Skew frozen: IV adjusted via proportional scaling relative to ATM only.
     # Post-event RR and BF are assumed unchanged (v3 spec section 4.5).
     # Do not add smile-level shift here without a spec change.

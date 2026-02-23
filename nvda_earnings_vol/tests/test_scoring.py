@@ -25,7 +25,7 @@ def test_convexity_guard() -> None:
             ),
         ),
     )
-    metrics = compute_metrics(strategy, pnls, 0.05, 0.04, 100.0)
+    metrics = compute_metrics(strategy, pnls, 0.05, 0.04, 100.0, 1.0)
     assert metrics["convexity"] > 0
 
 
@@ -43,7 +43,7 @@ def test_undefined_risk_detection() -> None:
         ),
     )
     pnls = np.array([1.0, -10.0, 2.0])
-    metrics = compute_metrics(strategy, pnls, 0.05, 0.04, 100.0)
+    metrics = compute_metrics(strategy, pnls, 0.05, 0.04, 100.0, 1.0)
     assert metrics["risk_classification"] == "undefined_risk"
 
 
@@ -84,5 +84,30 @@ def test_convexity_cap_on_near_zero_bottom() -> None:
         name="convex",
         legs=(OptionLeg("call", 100.0, 1, "buy", pd.Timestamp("2030-01-01")),),
     )
-    metrics = compute_metrics(strategy, pnls, 0.05, 0.04, 100.0)
+    metrics = compute_metrics(strategy, pnls, 0.05, 0.04, 100.0, 1.0)
     assert metrics["convexity"] == CONVEXITY_CAP
+
+
+def test_robustness_direction() -> None:
+    strategy = Strategy(
+        name="test",
+        legs=(OptionLeg("call", 100.0, 1, "buy", pd.Timestamp("2030-01-01")),),
+    )
+    pnls = np.array([0.0, 1.0, -1.0])
+
+    stable_evs = [100.0, 100.0, 100.0]
+    unstable_evs = [200.0, -50.0, 10.0]
+
+    robust_stable = 1.0 / (np.std(stable_evs) + 1e-9)
+    robust_unstable = 1.0 / (np.std(unstable_evs) + 1e-9)
+    assert robust_stable > robust_unstable
+
+    metrics = compute_metrics(
+        strategy,
+        pnls,
+        0.05,
+        0.04,
+        100.0,
+        robustness_override=robust_stable,
+    )
+    assert metrics["robustness"] == robust_stable

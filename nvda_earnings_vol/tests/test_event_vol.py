@@ -135,7 +135,9 @@ def test_flat_term_structure_event_var_zero() -> None:
         back1_expiry,
         back2_expiry,
     )
-    assert abs(float(output["raw_event_var"])) < 1e-9
+    iv = 0.5
+    expected = iv**2
+    assert abs(float(output["raw_event_var"]) - expected) < 1e-9
 
 
 def test_zero_liquidity_after_filtering_raises(tmp_path, monkeypatch) -> None:
