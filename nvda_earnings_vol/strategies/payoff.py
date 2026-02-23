@@ -13,6 +13,7 @@ from nvda_earnings_vol.config import (
     CONTRACT_MULTIPLIER,
     DIVIDEND_YIELD,
     HOLD_TO_EXPIRY,
+    IV_SCENARIOS,
     RISK_FREE_RATE,
     TIME_EPSILON,
 )
@@ -76,9 +77,7 @@ def _entry_cost(
     total = 0.0
     for leg in strategy.legs:
         key = (leg.expiry.date(), leg.option_type, float(leg.strike))
-        data = lookup.get(key)
-        if data is None:
-            continue
+        data = _get_leg_data(lookup, leg)
         price = execution_price(data["mid"], data["spread"], leg.side, slippage_pct)
         leg_value = price * leg.qty * CONTRACT_MULTIPLIER
         total += leg_value if leg.side == "buy" else -leg_value
@@ -101,9 +100,7 @@ def _exit_value(
     total = 0.0
     for leg in strategy.legs:
         key = (leg.expiry.date(), leg.option_type, float(leg.strike))
-        data = lookup.get(key)
-        if data is None:
-            continue
+        data = _get_leg_data(lookup, leg)
         if HOLD_TO_EXPIRY:
             price = _intrinsic(spot, leg.strike, leg.option_type)
         else:
@@ -145,7 +142,7 @@ def _intrinsic(spot: float, strike: float, option_type: str) -> float:
 
 def _time_remaining(event_date: dt.date, expiry: dt.date) -> float:
     business_days = pd.bdate_range(event_date, expiry).size - 1
-    return max((business_days - 1) / 252.0, TIME_EPSILON)
+    return max(business_days / 252.0, TIME_EPSILON)
 
 
 def _post_iv(
@@ -161,14 +158,18 @@ def _post_iv(
     atm_iv = expiry_atm_iv.get(expiry, leg_iv)
     base_atm = front_iv if expiry == front_expiry else back_iv
 
-    if scenario == "base_crush":
-        target_atm = back_iv
-    elif scenario == "hard_crush":
-        target_atm = base_atm * (1 - 0.35) if expiry == front_expiry else base_atm * (1 - 0.10)
-    elif scenario == "expansion":
-        target_atm = base_atm * 1.10 if expiry == front_expiry else base_atm * 1.05
-    else:
+    scenario_cfg = IV_SCENARIOS.get(scenario)
+    if scenario_cfg is None:
         target_atm = base_atm
+    elif scenario_cfg.get("front") == "collapse_to_back":
+        target_atm = back_iv
+    else:
+        shift = (
+            float(scenario_cfg["front"])
+            if expiry == front_expiry
+            else float(scenario_cfg["back"])
+        )
+        target_atm = base_atm * (1 + shift)
 
     if atm_iv <= 0:
         return max(target_atm, TIME_EPSILON)
@@ -186,3 +187,14 @@ def _expiry_atm_iv(chain: pd.DataFrame, spot: float) -> dict[dt.date, float]:
         if not ivs.empty:
             output[expiry.date()] = float(ivs.mean())
     return output
+
+
+def _get_leg_data(lookup: dict[tuple, dict[str, float]], leg) -> dict[str, float]:
+    key = (leg.expiry.date(), leg.option_type, float(leg.strike))
+    data = lookup.get(key)
+    if data is None:
+        raise ValueError(
+            "Missing option data for leg: "
+            f"{leg.option_type} {leg.strike} {leg.expiry.date()}"
+        )
+    return data

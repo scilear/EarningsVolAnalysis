@@ -46,6 +46,22 @@ def main() -> None:
         default="reports/nvda_earnings_report.html",
         help="Output HTML report path",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default="data/cache",
+        help="Directory for cached option chains",
+    )
+    parser.add_argument(
+        "--use-cache",
+        action="store_true",
+        help="Use cached option chains when available",
+    )
+    parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="Force refresh of cached option chains",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -58,25 +74,49 @@ def main() -> None:
     if event_date <= dt.date.today():
         raise ValueError("Event date must be in the future.")
 
-    spot = get_spot_price(config.TICKER)
-    expiries = get_option_expiries(config.TICKER)
-    post_event = get_expiries_after(expiries, event_date)
-    if len(post_event) < 2:
-        raise ValueError("Insufficient expiries after event date.")
+    try:
+        spot = get_spot_price(config.TICKER)
+        expiries = get_option_expiries(config.TICKER)
+        post_event = get_expiries_after(expiries, event_date)
+        if len(post_event) < 2:
+            raise ValueError("Insufficient expiries after event date.")
 
-    front_expiry = post_event[0]
-    back1_expiry = post_event[1]
-    back2_expiry = post_event[2] if len(post_event) > 2 else None
+        front_expiry = post_event[0]
+        back1_expiry = post_event[1]
+        back2_expiry = post_event[2] if len(post_event) > 2 else None
 
-    front_chain = _load_filtered_chain(front_expiry, spot)
-    back1_chain = _load_filtered_chain(back1_expiry, spot)
-    back2_chain = (
-        _load_filtered_chain(back2_expiry, spot, allow_empty=True)
-        if back2_expiry
-        else None
-    )
-    if back2_chain is None:
-        back2_expiry = None
+        cache_dir = Path(args.cache_dir)
+        front_chain = _load_filtered_chain(
+            front_expiry,
+            spot,
+            cache_dir,
+            args.use_cache,
+            args.refresh_cache,
+        )
+        back1_chain = _load_filtered_chain(
+            back1_expiry,
+            spot,
+            cache_dir,
+            args.use_cache,
+            args.refresh_cache,
+        )
+        back2_chain = (
+            _load_filtered_chain(
+                back2_expiry,
+                spot,
+                cache_dir,
+                args.use_cache,
+                args.refresh_cache,
+                allow_empty=True,
+            )
+            if back2_expiry
+            else None
+        )
+        if back2_chain is None:
+            back2_expiry = None
+    except ValueError as exc:
+        LOGGER.error("%s", exc)
+        return
 
     implied_move = implied_move_from_chain(front_chain, spot)
     history = get_price_history(config.TICKER, config.HISTORY_YEARS)
@@ -103,7 +143,10 @@ def main() -> None:
     gex = gex_summary(front_chain, spot, t_front)
     skew = skew_metrics(front_chain, spot, t_front)
     gex_note = None
-    if gex["abs_gex"] > 0 and abs(gex["net_gex"]) / gex["abs_gex"] < 0.1:
+    if (
+        gex["abs_gex"] >= config.GEX_LARGE_ABS
+        and abs(gex["net_gex"]) / gex["abs_gex"] < 0.1
+    ):
         gex_note = "Positioning concentrated but direction uncertain"
 
     scenarios = list(config.IV_SCENARIOS.keys())
@@ -182,12 +225,8 @@ def main() -> None:
 
     move_plot = plot_move_comparison(implied_move, hist_p75)
     pnl_plot = plot_pnl_distribution(top["pnls"], f"Top Strategy: {top['strategy']}")
-    rr25_value = (
-        f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
-    )
-    bf25_value = (
-        f"{skew['bf25']:.4f}" if skew["bf25"] is not None else "N/A"
-    )
+    rr25_value = f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
+    bf25_value = f"{skew['bf25']:.4f}" if skew["bf25"] is not None else "N/A"
 
     report_path = Path(args.output)
     write_report(
@@ -237,17 +276,34 @@ def _parse_event_date(value: str | None) -> dt.date | None:
 
 
 def _load_filtered_chain(
-    expiry: dt.date | None, spot: float, allow_empty: bool = False
+    expiry: dt.date | None,
+    spot: float,
+    cache_dir: Path,
+    use_cache: bool,
+    refresh_cache: bool,
+    allow_empty: bool = False,
 ) -> pd.DataFrame | None:
     if expiry is None:
         return None
-    chain = get_options_chain(config.TICKER, expiry)
+    chain = get_options_chain(
+        config.TICKER,
+        expiry,
+        cache_dir=cache_dir,
+        use_cache=use_cache,
+        refresh_cache=refresh_cache,
+    )
+    LOGGER.info("Options rows pre-filter for %s: %d", expiry, len(chain))
     chain = filter_by_moneyness(chain, spot, config.MONEYNESS_LOW, config.MONEYNESS_HIGH)
     chain = filter_by_liquidity(chain, config.MIN_OI, config.MAX_SPREAD_PCT)
+    LOGGER.info("Options rows post-filter for %s: %d", expiry, len(chain))
     if chain.empty:
         if allow_empty:
             return None
-        raise ValueError(f"No options remain after filtering for {expiry}")
+        raise ValueError(
+            f"No options remain after filtering for {expiry} "
+            f"(OI>={config.MIN_OI}, spread<={config.MAX_SPREAD_PCT}, "
+            f"moneyness {config.MONEYNESS_LOW}-{config.MONEYNESS_HIGH})."
+        )
     return chain
 
 

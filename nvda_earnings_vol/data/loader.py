@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
@@ -49,15 +50,40 @@ def _normalize_chain_frame(
     return output
 
 
-def get_options_chain(ticker: str, expiry: dt.date) -> pd.DataFrame:
+def get_options_chain(
+    ticker: str,
+    expiry: dt.date,
+    cache_dir: Path | None = None,
+    use_cache: bool = False,
+    refresh_cache: bool = False,
+) -> pd.DataFrame:
     """Fetch options chain for a given expiry and return combined frame."""
+    cache_path = None
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        stamp = dt.date.today().strftime("%Y%m%d")
+        cache_name = f"{ticker}_{expiry.strftime('%Y%m%d')}_{stamp}.csv"
+        cache_path = cache_dir / cache_name
+
+    if use_cache and cache_path is not None and cache_path.exists() and not refresh_cache:
+        LOGGER.info("Loading options chain from cache: %s", cache_path)
+        chain = pd.read_csv(cache_path)
+        _raise_if_market_closed(chain)
+        return chain
+
     yf_ticker = yf.Ticker(ticker)
     chain = yf_ticker.option_chain(expiry.strftime("%Y-%m-%d"))
 
     calls = _normalize_chain_frame(chain.calls, "call", expiry)
     puts = _normalize_chain_frame(chain.puts, "put", expiry)
+    combined = pd.concat([calls, puts], ignore_index=True)
+    _raise_if_market_closed(combined)
 
-    return pd.concat([calls, puts], ignore_index=True)
+    if cache_path is not None:
+        combined.to_csv(cache_path, index=False)
+        LOGGER.info("Saved options chain to cache: %s", cache_path)
+
+    return combined
 
 
 def get_price_history(ticker: str, years: int) -> pd.DataFrame:
@@ -93,3 +119,14 @@ def get_expiries_after(
 ) -> list[dt.date]:
     """Filter expiries that are on or after a target date."""
     return sorted([exp for exp in expiries if exp >= target_date])
+
+
+def _raise_if_market_closed(chain: pd.DataFrame) -> None:
+    if chain.empty:
+        return
+    bids = chain["bid"].fillna(0.0)
+    asks = chain["ask"].fillna(0.0)
+    if (bids == 0).all() and (asks == 0).all():
+        raise ValueError(
+            "Options bid/ask are all 0.00; market appears closed or data unavailable."
+        )

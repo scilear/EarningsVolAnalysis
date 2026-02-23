@@ -24,10 +24,10 @@ CALENDAR_LONG_MIN_DTE: int = 30
 HOLD_TO_EXPIRY: bool = False
 
 # IV scenarios
-IV_SCENARIOS: dict[str, float | str] = {
-    "base_crush": "collapse_to_back",
-    "hard_crush": 0.35,
-    "expansion": -0.10,
+IV_SCENARIOS: dict[str, dict[str, float | str]] = {
+    "base_crush": {"front": "collapse_to_back", "back": "collapse_to_back"},
+    "hard_crush": {"front": -0.35, "back": -0.10},
+    "expansion": {"front": 0.10, "back": 0.05},
 }
 
 # Vol-of-vol shocks
@@ -47,6 +47,7 @@ CONVEXITY_EPS: float = 1e-6
 
 # GEX
 GEX_RANGE_PCT: float = 0.05
+GEX_LARGE_ABS: float = 1e9
 
 # Risk-free rate
 RISK_FREE_RATE: float = 0.05

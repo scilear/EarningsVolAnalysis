@@ -58,10 +58,10 @@ def event_variance(
             t_back2 * back2_iv**2,
             max(t_front - dt_event, TIME_EPSILON),
         )
-        assumption = "term_structure_interpolation"
+        assumption = "Term structure interpolation"
     else:
         tv_pre = max(t_front - dt_event, TIME_EPSILON) * back1_iv**2
-        assumption = "single_point"
+        assumption = "Single-point term structure assumption"
 
     raw_event_var = (t_front * front_iv**2 - tv_pre) / dt_event
     ratio = abs(raw_event_var) / max(front_iv**2, TIME_EPSILON)

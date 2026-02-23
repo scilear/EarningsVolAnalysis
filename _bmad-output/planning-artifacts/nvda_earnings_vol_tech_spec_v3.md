@@ -29,6 +29,8 @@ embedded plots.
 In Scope (MVP):
 - NVDA only (hardcoded ticker)
 - CLI with --event-date param (default: next earnings)
+- Options chain caching with date-stamped files and CLI cache flags
+- Early exit when market data indicates closed market (bid/ask all zero)
 - All 12 spec sections implemented
 - HTML report with embedded base64 plots
 - Basic unit tests per module
@@ -149,9 +151,9 @@ HOLD_TO_EXPIRY: bool = False
 
 # IV scenarios
 IV_SCENARIOS: dict = {
-    "base_crush": "collapse_to_back",
-    "hard_crush": 0.35,
-    "expansion": -0.10,
+    "base_crush": {"front": "collapse_to_back", "back": "collapse_to_back"},
+    "hard_crush": {"front": -0.35, "back": -0.10},
+    "expansion": {"front": 0.10, "back": 0.05},
 }
 
 # Vol-of-vol shocks
@@ -171,6 +173,7 @@ CONVEXITY_EPS: float = 1e-6
 
 # GEX
 GEX_RANGE_PCT: float = 0.05
+GEX_LARGE_ABS: float = 1e9
 
 # Risk-free rate
 RISK_FREE_RATE: float = 0.05
@@ -187,6 +190,23 @@ apply_slippage(chain, slippage_pct=0.10)
 execution_price = mid +- (0.5 * spread * slippage_pct)
 
 This crosses slippage_pct of half-spread, not the full spread.
+
+---
+
+### 4.2a data/loader.py -- Options Chain Cache
+
+Cache options chains to disk with a date-stamped filename:
+
+```
+{ticker}_{expiry}_{YYYYMMDD}.csv
+```
+
+CLI flags:
+- `--cache-dir` path for cached chains
+- `--use-cache` to load cached chain if available
+- `--refresh-cache` to force reload and overwrite
+
+If bid==ask==0 for all rows, log a clear message and exit (market likely closed).
 
 ---
 
@@ -453,6 +473,54 @@ All other acceptance criteria remain as in v1.
 - No SABR
 - No broker API
 - No rate curve fetch
+
+## Dev Agent Record
+
+### File List
+- `nvda_earnings_vol/__init__.py`
+- `nvda_earnings_vol/config.py`
+- `nvda_earnings_vol/main.py`
+- `nvda_earnings_vol/data/__init__.py`
+- `nvda_earnings_vol/data/loader.py`
+- `nvda_earnings_vol/data/filters.py`
+- `nvda_earnings_vol/analytics/__init__.py`
+- `nvda_earnings_vol/analytics/bsm.py`
+- `nvda_earnings_vol/analytics/implied_move.py`
+- `nvda_earnings_vol/analytics/event_vol.py`
+- `nvda_earnings_vol/analytics/historical.py`
+- `nvda_earnings_vol/analytics/skew.py`
+- `nvda_earnings_vol/analytics/gamma.py`
+- `nvda_earnings_vol/simulation/__init__.py`
+- `nvda_earnings_vol/simulation/monte_carlo.py`
+- `nvda_earnings_vol/strategies/__init__.py`
+- `nvda_earnings_vol/strategies/structures.py`
+- `nvda_earnings_vol/strategies/payoff.py`
+- `nvda_earnings_vol/strategies/scoring.py`
+- `nvda_earnings_vol/viz/__init__.py`
+- `nvda_earnings_vol/viz/plots.py`
+- `nvda_earnings_vol/reports/__init__.py`
+- `nvda_earnings_vol/reports/reporter.py`
+- `nvda_earnings_vol/tests/__init__.py`
+- `nvda_earnings_vol/tests/test_loader.py`
+- `nvda_earnings_vol/tests/test_bsm.py`
+- `nvda_earnings_vol/tests/test_implied_move.py`
+- `nvda_earnings_vol/tests/test_event_vol.py`
+- `nvda_earnings_vol/tests/test_historical.py`
+- `nvda_earnings_vol/tests/test_skew.py`
+- `nvda_earnings_vol/tests/test_gamma.py`
+- `nvda_earnings_vol/tests/test_monte_carlo.py`
+- `nvda_earnings_vol/tests/test_strategies.py`
+- `nvda_earnings_vol/tests/test_scoring.py`
+- `nvda_earnings_vol/tests/test_filters.py`
+- `nvda_earnings_vol/requirements.txt`
+- `_bmad-output/planning-artifacts/nvda_earnings_vol_tech_spec_v3.md`
+
+### Change Log
+- Added IV scenario config structure with per-expiry shifts and GEX large threshold.
+- Tightened event vol assumption wording and added diagnostics.
+- Enforced leg data presence and fixed time-remaining calculation.
+- Added scenario/shock robustness scoring and skew reporting.
+- Added filter/IV/0-DTE edge tests and clarified reporting outputs.
 
 (End of file)
 

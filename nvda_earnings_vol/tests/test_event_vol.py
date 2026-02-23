@@ -62,7 +62,7 @@ def test_single_point_assumption() -> None:
         back1_expiry,
         None,
     )
-    assert output["assumption"] == "single_point"
+    assert output["assumption"] == "Single-point term structure assumption"
 
 
 def test_event_vol_handles_zero_iv() -> None:
