@@ -116,6 +116,19 @@ def get_next_earnings_date(ticker: str) -> dt.date | None:
     return None
 
 
+def get_earnings_dates(ticker: str, limit: int = 12) -> list[pd.Timestamp]:
+    """Fetch recent earnings dates using yfinance."""
+    yf_ticker = yf.Ticker(ticker)
+    try:
+        earnings = yf_ticker.get_earnings_dates(limit=limit)
+    except Exception as exc:
+        LOGGER.warning("Earnings dates fetch failed: %s", exc)
+        return []
+    if earnings is None or earnings.empty:
+        return []
+    return [ts for ts in earnings.index if isinstance(ts, pd.Timestamp)]
+
+
 def get_expiries_after(
     expiries: Iterable[dt.date], target_date: dt.date
 ) -> list[dt.date]:

@@ -13,11 +13,12 @@ import pandas as pd
 from nvda_earnings_vol import config
 from nvda_earnings_vol.analytics.event_vol import event_variance
 from nvda_earnings_vol.analytics.gamma import gex_summary
-from nvda_earnings_vol.analytics.historical import historical_p75
+from nvda_earnings_vol.analytics.historical import earnings_move_p75
 from nvda_earnings_vol.analytics.implied_move import implied_move_from_chain
 from nvda_earnings_vol.analytics.skew import skew_metrics
 from nvda_earnings_vol.data.filters import filter_by_liquidity, filter_by_moneyness
 from nvda_earnings_vol.data.loader import (
+    get_earnings_dates,
     get_expiries_after,
     get_next_earnings_date,
     get_option_expiries,
@@ -115,12 +116,23 @@ def main() -> None:
         if back2_chain is None:
             back2_expiry = None
     except ValueError as exc:
-        LOGGER.error("%s", exc)
+        message = str(exc)
+        if "market appears closed" in message.lower():
+            LOGGER.error("Market appears closed or data unavailable; exiting (%s)", exc)
+        else:
+            LOGGER.error("%s", exc)
         return
 
-    implied_move = implied_move_from_chain(front_chain, spot)
-    history = get_price_history(config.TICKER, config.HISTORY_YEARS)
-    hist_p75 = historical_p75(history)
+    try:
+        implied_move = implied_move_from_chain(
+            front_chain, spot, config.SLIPPAGE_PCT
+        )
+        history = get_price_history(config.TICKER, config.HISTORY_YEARS)
+        earnings_dates = get_earnings_dates(config.TICKER)
+        hist_p75 = earnings_move_p75(history, earnings_dates)
+    except ValueError as exc:
+        LOGGER.error("%s", exc)
+        return
 
     event_info = event_variance(
         front_chain,

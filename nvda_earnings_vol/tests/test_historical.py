@@ -1,13 +1,24 @@
 """Tests for historical move stats."""
 
+import datetime as dt
+
 import pandas as pd
 
-from nvda_earnings_vol.analytics.historical import historical_p75
+from nvda_earnings_vol.analytics.historical import earnings_move_p75
 
 
-def test_historical_p75() -> None:
+def test_earnings_move_p75() -> None:
     data = pd.DataFrame(
-        {"Close": [100.0, 101.0, 99.0, 100.5, 98.0]}
+        {
+            "Date": [
+                dt.date(2024, 1, 2),
+                dt.date(2024, 1, 3),
+                dt.date(2024, 1, 4),
+                dt.date(2024, 1, 5),
+            ],
+            "Close": [100.0, 110.0, 105.0, 120.0],
+        }
     )
-    p75 = historical_p75(data)
-    assert p75 > 0
+    earnings_dates = [pd.Timestamp("2024-01-03"), pd.Timestamp("2024-01-05")]
+    p75 = earnings_move_p75(data, earnings_dates)
+    assert 0.1 < p75 < 0.15

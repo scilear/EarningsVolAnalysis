@@ -43,7 +43,7 @@ def compute_metrics(
 ) -> dict:
     """Compute scoring metrics for a strategy."""
     ev = float(np.mean(pnls))
-    cvar = float(np.mean(np.sort(pnls)[: max(int(0.1 * len(pnls)), 1)]))
+    cvar = float(np.mean(np.sort(pnls)[: max(int(0.05 * len(pnls)), 1)]))
     convexity = _convexity(pnls)
     robustness = (
         float(robustness_override)

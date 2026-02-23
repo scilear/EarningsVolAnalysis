@@ -141,7 +141,7 @@ def _intrinsic(spot: float, strike: float, option_type: str) -> float:
 
 
 def _time_remaining(event_date: dt.date, expiry: dt.date) -> float:
-    business_days = pd.bdate_range(event_date, expiry).size - 1
+    business_days = pd.bdate_range(event_date, expiry).size
     return max((business_days - 1) / 252.0, TIME_EPSILON)
 
 

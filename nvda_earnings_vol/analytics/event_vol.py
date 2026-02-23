@@ -51,6 +51,7 @@ def event_variance(
     if back2_chain is not None and back2_expiry is not None:
         back2_iv = _atm_iv(back2_chain, spot)
         t_back2 = max(_business_days(dt.date.today(), back2_expiry) / 252.0, TIME_EPSILON)
+        # tv_pre is already total variance (T * IV^2); do not multiply by maturity again.
         tv_pre = _linear_interp(
             t_back1,
             t_back1 * back1_iv**2,

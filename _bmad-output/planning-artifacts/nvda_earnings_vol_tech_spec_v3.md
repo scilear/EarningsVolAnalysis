@@ -1,7 +1,7 @@
 # Tech-Spec: NVDA Earnings Volatility & Options Structure Analysis Engine (v3)
 
 Created: 2026-02-23
-Status: Completed
+Status: done
 Target: NVDA (hardcoded MVP), parameterized event date
 
 ---
@@ -175,6 +175,10 @@ CONVEXITY_EPS: float = 1e-6
 GEX_RANGE_PCT: float = 0.05
 GEX_LARGE_ABS: float = 1e9
 
+GEX_LARGE_ABS is a placeholder threshold. Calibrate it to the expected open
+interest scale for the target market (e.g., percentile of abs_gex across recent
+sessions) and document the chosen basis.
+
 # Risk-free rate
 RISK_FREE_RATE: float = 0.05
 
@@ -247,6 +251,13 @@ If event_var < 0:
 
 ---
 
+### 4.3a analytics/historical.py -- Earnings Move P75
+
+Compute 75th percentile of absolute earnings gap moves using historical
+earnings dates and close-to-close returns around earnings dates.
+
+---
+
 ### 4.4 simulation/monte_carlo.py -- Lognormal Simulation (Validated)
 
 Corrected lognormal drift:
@@ -266,6 +277,13 @@ Validation layer:
 Do not increase simulation count.
 
 If any validation fails: log warning, continue execution, do not abort.
+
+---
+
+### 4.4a analytics/implied_move.py -- Slippage-Adjusted ATM Straddle
+
+Implied move uses slippage-adjusted ATM straddle pricing (buy-side slippage on
+call and put legs).
 
 ---
 
@@ -357,6 +375,12 @@ Guard:
 
 ---
 
+### 4.7a strategies/scoring.py -- CVaR Tail
+
+CVaR uses the worst 5% tail (95% CVaR).
+
+---
+
 ### 4.8 strategies/scoring.py -- Capital Efficiency (Risk-Aware)
 
 Compute:
@@ -437,6 +461,8 @@ Add tests for:
 - convexity denominator near zero
 - cached chain loads expiry as datetime
 - market-closed detection when bid/ask all zero
+- earnings-move P75 computation
+- slippage-adjusted implied move
 
 ---
 
@@ -514,6 +540,7 @@ All other acceptance criteria remain as in v1.
 - `nvda_earnings_vol/tests/test_strategies.py`
 - `nvda_earnings_vol/tests/test_scoring.py`
 - `nvda_earnings_vol/tests/test_filters.py`
+- `nvda_earnings_vol/tests/test_payoff.py`
 - `nvda_earnings_vol/requirements.txt`
 - `_bmad-output/planning-artifacts/nvda_earnings_vol_tech_spec_v3.md`
 
@@ -524,6 +551,10 @@ All other acceptance criteria remain as in v1.
 - Added scenario/shock robustness scoring and skew reporting.
 - Added filter/IV/0-DTE edge tests and clarified reporting outputs.
 - Added cache/market-closed behavior with tests and documented cache flags.
+- Switched historical P75 to earnings moves and implied move to slippage-adjusted pricing.
+- Updated CVaR tail to 5%.
+- Corrected time-remaining calculation and clarified market-closed logging.
+- Documented GEX_LARGE_ABS calibration guidance.
 
 ### Non-Story Files Present
 - `.gitignore` change pending (not part of story)
