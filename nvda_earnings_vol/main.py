@@ -16,7 +16,10 @@ from nvda_earnings_vol.analytics.gamma import gex_summary
 from nvda_earnings_vol.analytics.historical import earnings_move_p75
 from nvda_earnings_vol.analytics.implied_move import implied_move_from_chain
 from nvda_earnings_vol.analytics.skew import skew_metrics
-from nvda_earnings_vol.data.filters import filter_by_liquidity, filter_by_moneyness
+from nvda_earnings_vol.data.filters import (
+    filter_by_liquidity,
+    filter_by_moneyness,
+)
 from nvda_earnings_vol.data.loader import (
     get_earnings_dates,
     get_expiries_after,
@@ -29,9 +32,16 @@ from nvda_earnings_vol.data.loader import (
 from nvda_earnings_vol.reports.reporter import write_report
 from nvda_earnings_vol.simulation.monte_carlo import simulate_moves
 from nvda_earnings_vol.strategies.payoff import strategy_pnl
-from nvda_earnings_vol.strategies.scoring import compute_metrics, score_strategies
+from nvda_earnings_vol.strategies.scoring import (
+    compute_metrics,
+    score_strategies,
+)
 from nvda_earnings_vol.strategies.structures import build_strategies
-from nvda_earnings_vol.viz.plots import plot_move_comparison, plot_pnl_distribution
+from nvda_earnings_vol.utils import business_days
+from nvda_earnings_vol.viz.plots import (
+    plot_move_comparison,
+    plot_pnl_distribution,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -71,13 +81,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
 
     event_date = _parse_event_date(args.event_date)
     if event_date is None:
         event_date = get_next_earnings_date(config.TICKER)
     if event_date is None:
         raise ValueError("Event date not provided and could not be fetched.")
+    event_date = _normalize_event_date(event_date)
     if event_date <= dt.date.today():
         raise ValueError("Event date must be in the future.")
 
@@ -89,6 +103,7 @@ def main() -> None:
             raise ValueError("Insufficient expiries after event date.")
 
         front_expiry = post_event[0]
+        _validate_front_expiry(event_date, front_expiry)
         back1_expiry = post_event[1]
         back2_expiry = post_event[2] if len(post_event) > 2 else None
 
@@ -124,14 +139,19 @@ def main() -> None:
     except ValueError as exc:
         message = str(exc)
         if "market appears closed" in message.lower():
-            LOGGER.error("Market appears closed or data unavailable; exiting (%s)", exc)
+            LOGGER.error(
+                "Market appears closed or data unavailable; exiting (%s)",
+                exc,
+            )
         else:
             LOGGER.error("%s", exc)
         return
 
     try:
         implied_move = implied_move_from_chain(
-            front_chain, spot, config.SLIPPAGE_PCT
+            front_chain,
+            spot,
+            config.SLIPPAGE_PCT,
         )
         history = get_price_history(config.TICKER, config.HISTORY_YEARS)
         earnings_dates = get_earnings_dates(config.TICKER)
@@ -157,10 +177,12 @@ def main() -> None:
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
     term_structure_note = None
     if front_iv < back_iv:
-        term_structure_note = "Front IV below back IV; term structure inversion."
+        term_structure_note = (
+            "Front IV below back IV; term structure inversion."
+        )
         LOGGER.warning(term_structure_note)
 
-    t_front = _business_days(dt.date.today(), front_expiry) / 252.0
+    t_front = business_days(dt.date.today(), front_expiry) / 252.0
     t_front = max(t_front, config.TIME_EPSILON)
     gex = gex_summary(front_chain, spot, t_front)
     skew = skew_metrics(front_chain, spot, t_front)
@@ -178,10 +200,18 @@ def main() -> None:
         shock_vol = max(event_vol * (1 + shock / 100.0), 0.0)
         seed = None if args.seed is None else args.seed + shock + 1000
         moves_by_shock[shock] = simulate_moves(
-            shock_vol, config.MC_SIMULATIONS, seed=seed
+            shock_vol,
+            config.MC_SIMULATIONS,
+            seed=seed,
         )
 
-    strategies = build_strategies(front_chain, back1_chain, spot)
+    strangle_offset = implied_move * 0.8
+    strategies = build_strategies(
+        front_chain,
+        back1_chain,
+        spot,
+        strangle_offset_pct=strangle_offset,
+    )
     combined_chain = pd.concat([front_chain, back1_chain], ignore_index=True)
 
     results = []
@@ -216,9 +246,15 @@ def main() -> None:
                     scenario,
                 )
                 evs.append(float(np.mean(pnls)))
-        robustness = float(np.mean(evs))
+        scenario_ev_std = float(np.std(evs)) if len(evs) > 1 else 0.0
+        robustness = 1.0 / (scenario_ev_std + 1e-9)
         metrics = compute_metrics(
-            strategy, base_pnls, implied_move, hist_p75, spot, robustness
+            strategy,
+            base_pnls,
+            implied_move,
+            hist_p75,
+            spot,
+            robustness,
         )
         metrics["scenario_evs"] = evs
         pnls = base_pnls
@@ -250,7 +286,10 @@ def main() -> None:
 
     expected_move_dollar = max(implied_move, hist_p75) * spot * 100
     move_plot = plot_move_comparison(implied_move, hist_p75)
-    pnl_plot = plot_pnl_distribution(top["pnls"], f"Top Strategy: {top['strategy']}")
+    pnl_plot = plot_pnl_distribution(
+        top["pnls"],
+        f"Top Strategy: {top['strategy']}",
+    )
     rr25_value = f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
     bf25_value = f"{skew['bf25']:.4f}" if skew["bf25"] is not None else "N/A"
 
@@ -275,6 +314,10 @@ def main() -> None:
             "ev_2x": f"{ev_2x:.2f}",
             "net_gex": f"{gex['net_gex']:.2f}",
             "abs_gex": f"{gex['abs_gex']:.2f}",
+            "gex_dealer_note": (
+                "GEX sign assumes dealers are net short options. "
+                "Interpret regime direction accordingly."
+            ),
             "gex_note": gex_note,
             "rankings": ranked,
             "move_plot": move_plot,
@@ -303,6 +346,21 @@ def _parse_event_date(value: str | None) -> dt.date | None:
     return dt.datetime.strptime(value, "%Y-%m-%d").date()
 
 
+def _normalize_event_date(event_date: dt.date | pd.Timestamp) -> dt.date:
+    if isinstance(event_date, pd.Timestamp):
+        return event_date.date()
+    return event_date
+
+
+def _validate_front_expiry(event_date: dt.date, front_expiry: dt.date) -> None:
+    if front_expiry <= event_date:
+        raise ValueError(
+            f"Front expiry {front_expiry} must be strictly after event date "
+            f"{event_date}. "
+            "Check your event date or option chain data."
+        )
+
+
 def _load_filtered_chain(
     expiry: dt.date | None,
     spot: float,
@@ -321,7 +379,12 @@ def _load_filtered_chain(
         refresh_cache=refresh_cache,
     )
     LOGGER.info("Options rows pre-filter for %s: %d", expiry, len(chain))
-    chain = filter_by_moneyness(chain, spot, config.MONEYNESS_LOW, config.MONEYNESS_HIGH)
+    chain = filter_by_moneyness(
+        chain,
+        spot,
+        config.MONEYNESS_LOW,
+        config.MONEYNESS_HIGH,
+    )
     chain = filter_by_liquidity(chain, config.MIN_OI, config.MAX_SPREAD_PCT)
     LOGGER.info("Options rows post-filter for %s: %d", expiry, len(chain))
     if chain.empty:
@@ -333,12 +396,6 @@ def _load_filtered_chain(
             f"moneyness {config.MONEYNESS_LOW}-{config.MONEYNESS_HIGH})."
         )
     return chain
-
-
-def _business_days(start: dt.date, end: dt.date) -> int:
-    if end <= start:
-        return 0
-    return pd.bdate_range(start, end).size - 1
 
 
 def _print_console_snapshot(
@@ -353,7 +410,8 @@ def _print_console_snapshot(
     print("\nVol Diagnostics")
     print(f"ImpliedMove: {implied_move:.4f}")
     print(f"Historical P75: {hist_p75:.4f}")
-    print(f"ImpliedMove / P75: {implied_move / max(hist_p75, 1e-9):.4f}")
+    implied_ratio = implied_move / max(hist_p75, 1e-9)
+    print(f"ImpliedMove / P75: {implied_ratio:.4f}")
     print(f"EventVol: {event_vol:.4f}")
     print(f"EventVol / FrontIV: {event_vol_ratio:.4f}")
 

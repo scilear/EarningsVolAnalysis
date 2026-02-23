@@ -26,10 +26,13 @@ HOLD_TO_EXPIRY: bool = False
 
 # IV scenarios
 IV_SCENARIOS: dict[str, dict[str, float | str]] = {
-    "base_crush": {"front": "collapse_to_back", "back": "collapse_to_back"},
+    "base_crush": {"front": "collapse_to_back", "back": "unchanged"},
     "hard_crush": {"front": -0.35, "back": -0.10},
     "expansion": {"front": 0.10, "back": 0.05},
 }
+
+# Strangle construction
+STRANGLE_OFFSET_PCT: float = 0.05
 
 # Vol-of-vol shocks
 VOL_SHOCKS: list[int] = [-10, -5, 5, 10]
@@ -48,7 +51,8 @@ CONVEXITY_EPS: float = 1e-6
 
 # GEX
 GEX_RANGE_PCT: float = 0.05
-GEX_LARGE_ABS: float = 1e9  # Placeholder threshold; calibrate to OI scale if needed.
+# Placeholder threshold; calibrate to OI scale if needed.
+GEX_LARGE_ABS: float = 1e9
 
 # Risk-free rate
 RISK_FREE_RATE: float = 0.05

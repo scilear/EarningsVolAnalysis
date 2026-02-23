@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -72,13 +71,19 @@ def _build_lookup(chain: pd.DataFrame) -> dict[tuple, dict[str, float]]:
 
 
 def _entry_cost(
-    strategy: Strategy, lookup: dict[tuple, dict[str, float]], slippage_pct: float
+    strategy: Strategy,
+    lookup: dict[tuple, dict[str, float]],
+    slippage_pct: float,
 ) -> float:
     total = 0.0
     for leg in strategy.legs:
-        key = (leg.expiry.date(), leg.option_type, float(leg.strike))
         data = _get_leg_data(lookup, leg)
-        price = execution_price(data["mid"], data["spread"], leg.side, slippage_pct)
+        price = execution_price(
+            data["mid"],
+            data["spread"],
+            leg.side,
+            slippage_pct,
+        )
         leg_value = price * leg.qty * CONTRACT_MULTIPLIER
         total += leg_value if leg.side == "buy" else -leg_value
     return total
@@ -99,7 +104,6 @@ def _exit_value(
 ) -> float:
     total = 0.0
     for leg in strategy.legs:
-        key = (leg.expiry.date(), leg.option_type, float(leg.strike))
         data = _get_leg_data(lookup, leg)
         if HOLD_TO_EXPIRY:
             price = _intrinsic(spot, leg.strike, leg.option_type)
@@ -125,7 +129,12 @@ def _exit_value(
                 leg.option_type,
             )
             exit_side = "sell" if leg.side == "buy" else "buy"
-            price = execution_price(price, data["spread"], exit_side, slippage_pct)
+            price = execution_price(
+                price,
+                data["spread"],
+                exit_side,
+                slippage_pct,
+            )
 
         leg_value = price * leg.qty * CONTRACT_MULTIPLIER
         total += leg_value if leg.side == "buy" else -leg_value
@@ -161,19 +170,21 @@ def _post_iv(
     scenario_cfg = IV_SCENARIOS.get(scenario)
     if scenario_cfg is None:
         target_atm = base_atm
-    elif scenario_cfg.get("front") == "collapse_to_back":
-        target_atm = back_iv
     else:
-        shift = (
-            float(scenario_cfg["front"])
-            if expiry == front_expiry
-            else float(scenario_cfg["back"])
-        )
-        target_atm = base_atm * (1 + shift)
+        side = "front" if expiry == front_expiry else "back"
+        shift = scenario_cfg.get(side)
+        if shift == "collapse_to_back":
+            target_atm = back_iv
+        elif shift == "unchanged" or shift is None:
+            target_atm = base_atm
+        else:
+            target_atm = base_atm * (1 + float(shift))
 
     if atm_iv <= 0:
         return max(target_atm, TIME_EPSILON)
-    # Skew freeze: scale leg IVs by ATM ratio (RR/BF unchanged).
+    # Skew frozen: IV adjusted via proportional scaling relative to ATM only.
+    # Post-event RR and BF are assumed unchanged (v3 spec section 4.5).
+    # Do not add smile-level shift here without a spec change.
     return max(leg_iv * (target_atm / atm_iv), TIME_EPSILON)
 
 
@@ -190,7 +201,10 @@ def _expiry_atm_iv(chain: pd.DataFrame, spot: float) -> dict[dt.date, float]:
     return output
 
 
-def _get_leg_data(lookup: dict[tuple, dict[str, float]], leg) -> dict[str, float]:
+def _get_leg_data(
+    lookup: dict[tuple, dict[str, float]],
+    leg,
+) -> dict[str, float]:
     key = (leg.expiry.date(), leg.option_type, float(leg.strike))
     data = lookup.get(key)
     if data is None:

@@ -78,7 +78,7 @@ TEMPLATE = Template(
     <tr><th>Net GEX</th><td>{{ net_gex }}</td></tr>
     <tr><th>Abs GEX</th><td>{{ abs_gex }}</td></tr>
   </table>
-  <p class="note">GEX sign assumes dealers net short options. Interpret regime directionally.</p>
+  <p class="note">{{ gex_dealer_note }}</p>
   {% if gex_note %}
   <p class="note">{{ gex_note }}</p>
   {% endif %}

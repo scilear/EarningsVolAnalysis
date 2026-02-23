@@ -8,12 +8,17 @@ import pandas as pd
 
 from nvda_earnings_vol.analytics.bsm import option_delta
 from nvda_earnings_vol.config import DIVIDEND_YIELD, RISK_FREE_RATE
+from nvda_earnings_vol.utils import atm_iv as calc_atm_iv
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-def skew_metrics(chain: pd.DataFrame, spot: float, t: float) -> dict[str, float | None]:
+def skew_metrics(
+    chain: pd.DataFrame,
+    spot: float,
+    t: float,
+) -> dict[str, float | None]:
     """Compute 25d risk reversal and butterfly from chain IVs."""
     calls = chain[chain["option_type"] == "call"].copy()
     puts = chain[chain["option_type"] == "put"].copy()
@@ -45,7 +50,11 @@ def skew_metrics(chain: pd.DataFrame, spot: float, t: float) -> dict[str, float 
 
     call_25 = _closest_delta(calls, 0.25)
     put_25 = _closest_delta(puts, -0.25)
-    atm_iv = _atm_iv(chain, spot)
+    try:
+        atm_iv = calc_atm_iv(chain, spot)
+    except ValueError:
+        LOGGER.warning("ATM IV not available for skew metrics.")
+        return {"rr25": None, "bf25": None}
 
     if call_25 is None or put_25 is None:
         LOGGER.warning("25d skew strikes not found.")
@@ -63,14 +72,3 @@ def _closest_delta(frame: pd.DataFrame, target: float) -> float | None:
     frame["dist"] = (frame["delta"] - target).abs()
     iv = frame.sort_values("dist").iloc[0]["impliedVolatility"]
     return float(iv) if pd.notna(iv) else None
-
-
-def _atm_iv(chain: pd.DataFrame, spot: float) -> float:
-    chain = chain.copy()
-    chain["distance"] = (chain["strike"] - spot).abs()
-    atm_strike = chain.sort_values("distance").iloc[0]["strike"]
-    atm = chain[chain["strike"] == atm_strike]
-    ivs = atm["impliedVolatility"].dropna()
-    if ivs.empty:
-        return 0.0
-    return float(ivs.mean())

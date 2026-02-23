@@ -6,7 +6,11 @@ import math
 
 import numpy as np
 
-from nvda_earnings_vol.config import CONVEXITY_CAP, CONVEXITY_EPS, SCORING_WEIGHTS
+from nvda_earnings_vol.config import (
+    CONVEXITY_CAP,
+    CONVEXITY_EPS,
+    SCORING_WEIGHTS,
+)
 from nvda_earnings_vol.strategies.structures import Strategy
 
 
@@ -43,7 +47,9 @@ def compute_metrics(
 ) -> dict:
     """Compute scoring metrics for a strategy."""
     ev = float(np.mean(pnls))
-    cvar = float(np.mean(np.sort(pnls)[: max(int(0.05 * len(pnls)), 1)]))
+    cvar = float(
+        np.mean(np.sort(pnls)[: max(int(0.05 * len(pnls)), 1)])
+    )
     convexity = _convexity(pnls)
     robustness = (
         float(robustness_override)
@@ -91,33 +97,44 @@ def _normalize(values: list[float]) -> list[float]:
 
 
 def _is_undefined_risk(strategy: Strategy) -> bool:
+    """Return True if any short leg is uncovered.
+
+    Coverage rules:
+    - Short call is covered by a long call with strike >= short strike.
+    - Short put is covered by a long put with strike <= short strike.
+    - Time spreads (calendars/diagonals) are defined risk.
+    """
     short_calls = [
-        leg for leg in strategy.legs if leg.option_type == "call" and leg.side == "sell"
+        leg
+        for leg in strategy.legs
+        if leg.option_type == "call" and leg.side == "sell"
     ]
     short_puts = [
-        leg for leg in strategy.legs if leg.option_type == "put" and leg.side == "sell"
+        leg
+        for leg in strategy.legs
+        if leg.option_type == "put" and leg.side == "sell"
     ]
     long_calls = [
-        leg for leg in strategy.legs if leg.option_type == "call" and leg.side == "buy"
+        leg
+        for leg in strategy.legs
+        if leg.option_type == "call" and leg.side == "buy"
     ]
     long_puts = [
-        leg for leg in strategy.legs if leg.option_type == "put" and leg.side == "buy"
+        leg
+        for leg in strategy.legs
+        if leg.option_type == "put" and leg.side == "buy"
     ]
 
     for short in short_calls:
         cover_qty = sum(
-            long.qty
-            for long in long_calls
-            if long.expiry == short.expiry and long.strike >= short.strike
+            long.qty for long in long_calls if long.strike >= short.strike
         )
         if cover_qty < short.qty:
             return True
 
     for short in short_puts:
         cover_qty = sum(
-            long.qty
-            for long in long_puts
-            if long.expiry == short.expiry and long.strike <= short.strike
+            long.qty for long in long_puts if long.strike <= short.strike
         )
         if cover_qty < short.qty:
             return True
