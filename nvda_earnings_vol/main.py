@@ -63,6 +63,12 @@ def main() -> None:
         action="store_true",
         help="Force refresh of cached option chains",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for Monte Carlo reproducibility",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -149,6 +155,10 @@ def main() -> None:
     back_iv = float(event_info["back_iv"])
     event_vol = float(np.sqrt(event_info["event_var"]))
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
+    term_structure_note = None
+    if front_iv < back_iv:
+        term_structure_note = "Front IV below back IV; term structure inversion."
+        LOGGER.warning(term_structure_note)
 
     t_front = _business_days(dt.date.today(), front_expiry) / 252.0
     t_front = max(t_front, config.TIME_EPSILON)
@@ -166,7 +176,10 @@ def main() -> None:
     moves_by_shock = {}
     for shock in shock_levels:
         shock_vol = max(event_vol * (1 + shock / 100.0), 0.0)
-        moves_by_shock[shock] = simulate_moves(shock_vol, config.MC_SIMULATIONS)
+        seed = None if args.seed is None else args.seed + shock + 1000
+        moves_by_shock[shock] = simulate_moves(
+            shock_vol, config.MC_SIMULATIONS, seed=seed
+        )
 
     strategies = build_strategies(front_chain, back1_chain, spot)
     combined_chain = pd.concat([front_chain, back1_chain], ignore_index=True)
@@ -203,7 +216,7 @@ def main() -> None:
                     scenario,
                 )
                 evs.append(float(np.mean(pnls)))
-        robustness = 1.0 / (float(np.std(evs)) + 1e-9)
+        robustness = float(np.mean(evs))
         metrics = compute_metrics(
             strategy, base_pnls, implied_move, hist_p75, spot, robustness
         )
@@ -235,6 +248,7 @@ def main() -> None:
         )
     )
 
+    expected_move_dollar = max(implied_move, hist_p75) * spot * 100
     move_plot = plot_move_comparison(implied_move, hist_p75)
     pnl_plot = plot_pnl_distribution(top["pnls"], f"Top Strategy: {top['strategy']}")
     rr25_value = f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
@@ -251,10 +265,12 @@ def main() -> None:
             "historical_p75": f"{hist_p75:.4f}",
             "event_vol": f"{event_vol:.4f}",
             "event_vol_ratio": f"{event_vol_ratio:.4f}",
+            "expected_move_dollar": f"{expected_move_dollar:.2f}",
             "raw_event_var": f"{event_info['raw_event_var']:.6f}",
             "event_var_ratio": f"{event_info['ratio']:.4f}",
             "warning_level": event_info["warning_level"],
             "assumption": event_info["assumption"],
+            "term_structure_note": term_structure_note,
             "ev_base": f"{ev_base:.2f}",
             "ev_2x": f"{ev_2x:.2f}",
             "net_gex": f"{gex['net_gex']:.2f}",

@@ -16,6 +16,7 @@ MAX_SPREAD_PCT: float = 0.05
 
 # Slippage
 SLIPPAGE_PCT: float = 0.10
+IMPLIED_MOVE_MAX_SPREAD_PCT: float = 0.20
 
 # Calendar strategy
 CALENDAR_LONG_MIN_DTE: int = 30

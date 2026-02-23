@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 import numpy as np
 import pandas as pd
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def earnings_move_p75(history: pd.DataFrame, earnings_dates: list[pd.Timestamp]) -> float:
@@ -22,8 +26,7 @@ def earnings_move_p75(history: pd.DataFrame, earnings_dates: list[pd.Timestamp])
 
     abs_moves = []
     for earnings_dt in earnings_dates:
-        target_date = earnings_dt.date()
-        event_date = _next_trading_day(trading_days, target_date)
+        event_date = _event_trading_day(trading_days, earnings_dt)
         prev_date = _prev_trading_day(trading_days, event_date)
         if event_date is None or prev_date is None:
             continue
@@ -33,7 +36,21 @@ def earnings_move_p75(history: pd.DataFrame, earnings_dates: list[pd.Timestamp])
 
     if len(abs_moves) < 2:
         raise ValueError("Insufficient earnings moves to compute P75.")
+    if len(abs_moves) < 6:
+        LOGGER.warning("Limited earnings move sample size: %d", len(abs_moves))
     return float(np.percentile(np.array(abs_moves), 75))
+
+
+def _event_trading_day(
+    trading_days: list[dt.date], earnings_dt: pd.Timestamp
+) -> dt.date | None:
+    local_dt = earnings_dt.to_pydatetime()
+    is_after_close = local_dt.time() >= dt.time(16, 0)
+    target_date = local_dt.date()
+    if is_after_close:
+        next_day_target = target_date + dt.timedelta(days=1)
+        return _next_trading_day(trading_days, next_day_target)
+    return _next_trading_day(trading_days, target_date)
 
 
 def _next_trading_day(trading_days: list[dt.date], target: dt.date) -> dt.date | None:

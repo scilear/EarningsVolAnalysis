@@ -13,12 +13,17 @@ from nvda_earnings_vol.config import MC_SIMULATIONS
 LOGGER = logging.getLogger(__name__)
 
 
-def simulate_moves(event_vol: float, simulations: int = MC_SIMULATIONS) -> np.ndarray:
+def simulate_moves(
+    event_vol: float,
+    simulations: int = MC_SIMULATIONS,
+    seed: int | None = None,
+) -> np.ndarray:
     """Simulate lognormal event moves with drift correction."""
     if event_vol <= 0:
         return np.zeros(simulations)
     sigma_1d = event_vol / math.sqrt(252.0)
-    z = np.random.standard_normal(simulations)
+    rng = np.random.default_rng(seed)
+    z = rng.standard_normal(simulations)
     moves = np.exp(-0.5 * sigma_1d**2 + sigma_1d * z) - 1.0
     _validate(moves, sigma_1d)
     return moves

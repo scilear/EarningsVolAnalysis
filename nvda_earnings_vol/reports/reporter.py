@@ -47,7 +47,11 @@ TEMPLATE = Template(
     <tr><th>Historical P75</th><td>{{ historical_p75 }}</td></tr>
     <tr><th>Event Vol</th><td>{{ event_vol }}</td></tr>
     <tr><th>Event Vol / Front IV</th><td>{{ event_vol_ratio }}</td></tr>
+    <tr><th>Expected Move ($)</th><td>{{ expected_move_dollar }}</td></tr>
   </table>
+  {% if term_structure_note %}
+  <p class="note">{{ term_structure_note }}</p>
+  {% endif %}
 
   <h2>Skew Metrics</h2>
   <table>

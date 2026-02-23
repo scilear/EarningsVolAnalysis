@@ -173,6 +173,7 @@ def _post_iv(
 
     if atm_iv <= 0:
         return max(target_atm, TIME_EPSILON)
+    # Skew freeze: scale leg IVs by ATM ratio (RR/BF unchanged).
     return max(leg_iv * (target_atm / atm_iv), TIME_EPSILON)
 
 
