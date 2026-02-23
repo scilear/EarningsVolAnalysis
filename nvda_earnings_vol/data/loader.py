@@ -67,7 +67,9 @@ def get_options_chain(
 
     if use_cache and cache_path is not None and cache_path.exists() and not refresh_cache:
         LOGGER.info("Loading options chain from cache: %s", cache_path)
-        chain = pd.read_csv(cache_path)
+        chain = pd.read_csv(cache_path, parse_dates=["expiry"])
+        if "expiry" not in chain.columns:
+            raise ValueError("Cached options chain missing expiry column.")
         _raise_if_market_closed(chain)
         return chain
 

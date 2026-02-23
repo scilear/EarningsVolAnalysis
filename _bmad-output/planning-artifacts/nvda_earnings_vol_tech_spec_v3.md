@@ -435,6 +435,8 @@ Add tests for:
 - front expiry = 0 DTE edge case
 - undefined-risk strategy detection
 - convexity denominator near zero
+- cached chain loads expiry as datetime
+- market-closed detection when bid/ask all zero
 
 ---
 
@@ -521,6 +523,11 @@ All other acceptance criteria remain as in v1.
 - Enforced leg data presence and fixed time-remaining calculation.
 - Added scenario/shock robustness scoring and skew reporting.
 - Added filter/IV/0-DTE edge tests and clarified reporting outputs.
+- Added cache/market-closed behavior with tests and documented cache flags.
+
+### Non-Story Files Present
+- `.gitignore` change pending (not part of story)
+- Untracked agent/tooling files (`.agents/`, `.gemini/`, `.github/`, `.opencode/`, `AGENTS.md`, `_bmad-output/planning-artifacts/nvda_earnings_vol_tech_spec_v1.md`, `_bmad-output/planning-artifacts/nvda_earnings_vol_tech_spec_v2.md`)
 
 (End of file)
 

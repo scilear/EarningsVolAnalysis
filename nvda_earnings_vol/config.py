@@ -47,7 +47,7 @@ CONVEXITY_EPS: float = 1e-6
 
 # GEX
 GEX_RANGE_PCT: float = 0.05
-GEX_LARGE_ABS: float = 1e9
+GEX_LARGE_ABS: float = 1e9  # Placeholder threshold; calibrate to OI scale if needed.
 
 # Risk-free rate
 RISK_FREE_RATE: float = 0.05
