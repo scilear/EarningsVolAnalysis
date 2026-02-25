@@ -3,6 +3,22 @@
 This module provides deterministic, realistic option chain generation for testing
 the earnings volatility analysis pipeline. Use via --test-data CLI flag.
 
+Two data structures are defined:
+
+TEST_SCENARIOS (14 total)
+    Option-chain scenarios passed to ``generate_test_data_set()``. These run
+    through the full analysis pipeline (main.py --test-data --test-scenario X).
+    Scenarios: baseline, high_vol, low_vol, gamma_unbalanced, term_inverted,
+    flat_term, negative_event_var, extreme_front_premium, sparse_chain,
+    backspread_favorable, backspread_unfavorable, backspread_overpriced,
+    post_event_entry, post_event_flat.
+
+_SNAPSHOT_SCENARIOS (5)
+    Pre-computed market snapshot dicts used by strategy entry-condition tests.
+    Access via ``generate_scenario(name)``. These do NOT generate option chains.
+    Scenarios: backspread_favorable, backspread_unfavorable, backspread_overpriced,
+    post_event_entry, post_event_flat.
+
 Example usage:
     # Generate synthetic data
     python -m nvda_earnings_vol.main --test-data
@@ -12,6 +28,10 @@ Example usage:
 
     # Save test data for later use
     python -m nvda_earnings_vol.main --test-data --save-test-data
+
+    # Access snapshot for entry-condition testing
+    from nvda_earnings_vol.data.test_data import generate_scenario
+    snap = generate_scenario("backspread_favorable")
 """
 
 from __future__ import annotations
@@ -112,6 +132,75 @@ TEST_SCENARIOS = {
             "num_strikes": 15,  # only 15 strikes total
             "spread_multiplier": 2.0,  # 2x normal bid-ask spread
         },
+    },
+    # ── Backspread / post-event scenarios (v6) ────────────────────────────
+    # front_iv = base_iv + event_vol_premium
+    # back_iv  = base_iv + term_structure_slope
+    "backspread_favorable": {
+        # iv_ratio = 0.80 / 0.50 = 1.60 >= 1.40 ✓
+        # Large event premium; back3 leg at 0.50 provides cheap convexity.
+        "base_iv": 0.50,
+        "iv_skew": 0.03,
+        "term_structure_slope": 0.00,
+        "net_gex_bias": -0.4,
+        "event_vol_premium": 0.30,
+        "description": (
+            "High event IV premium: iv_ratio 1.60 satisfies "
+            "backspread entry conditions"
+        ),
+    },
+    "backspread_unfavorable": {
+        # iv_ratio = 0.65 / 0.60 = 1.08 < 1.40 ✗
+        # Front and back IV nearly equal; no earnings edge to exploit.
+        "base_iv": 0.60,
+        "iv_skew": 0.03,
+        "term_structure_slope": 0.05,
+        "net_gex_bias": 0.1,
+        "event_vol_premium": 0.05,
+        "description": (
+            "Low event IV premium: iv_ratio 1.08 fails "
+            "backspread entry conditions"
+        ),
+    },
+    "backspread_overpriced": {
+        # iv_ratio = 0.85 / 0.50 = 1.70 >= 1.40 ✓ but implied > P75
+        # Elevated base vol drives implied_move above the P75 gate.
+        "base_iv": 0.50,
+        "iv_skew": 0.04,
+        "term_structure_slope": 0.00,
+        "net_gex_bias": -0.3,
+        "event_vol_premium": 0.35,
+        "description": (
+            "Overpriced event vol: implied_move > P75 × 0.90 "
+            "excludes backspreads despite high iv_ratio"
+        ),
+    },
+    "post_event_entry": {
+        # Post-event: front IV still residually elevated vs back.
+        # iv_ratio = 0.55 / 0.46 ≈ 1.20 >= 1.10 ✓ (post-event calendar).
+        # iv_ratio < 1.40 → backspreads excluded.
+        "base_iv": 0.50,
+        "iv_skew": 0.02,
+        "term_structure_slope": -0.04,
+        "net_gex_bias": 0.1,
+        "event_vol_premium": 0.05,
+        "description": (
+            "1-3 days after earnings: front IV residually elevated, "
+            "POST_EVENT_CALENDAR entry window open"
+        ),
+    },
+    "post_event_flat": {
+        # Post-event: IV fully normalised — no entry edge.
+        # iv_ratio = 0.52 / 0.50 = 1.04 < 1.10 ✗
+        "base_iv": 0.50,
+        "iv_skew": 0.02,
+        "term_structure_slope": 0.00,
+        "net_gex_bias": 0.0,
+        "event_vol_premium": 0.02,
+        "description": (
+            "Post-event with flat IV: iv_ratio < 1.10, "
+            "POST_EVENT_CALENDAR conditions not met"
+        ),
     },
 }
 
@@ -523,3 +612,167 @@ def get_scenario_description(scenario: str) -> str:
     if scenario not in TEST_SCENARIOS:
         raise ValueError(f"Unknown scenario: {scenario}")
     return TEST_SCENARIOS[scenario]["description"]
+
+
+# ── Market snapshot scenarios ──────────────────────────────────────────────
+# These are pre-computed snapshot dicts used by strategy entry-condition
+# tests and acceptance criteria. They do NOT go through the option chain
+# generation pipeline; all values are set directly to control test inputs.
+#
+# Required snapshot fields:
+#   Backspread gates: iv_ratio, event_variance_ratio, implied_move,
+#                     historical_p75, short_delta
+#   Post-event gates: days_after_event, iv_ratio, front_dte
+#   Regime fields:    front_iv, back_iv, gex_net, gex_abs, spot,
+#                     mean_abs_move, median_abs_move, historical_p90,
+#                     skewness, kurtosis
+#   Calendar gates:   back_dte
+
+_SNAPSHOT_SCENARIOS: dict[str, dict] = {
+    # ── Backspread scenarios ───────────────────────────────────────────────
+    "backspread_favorable": {
+        # All four backspread entry conditions satisfied.
+        # iv_ratio = 1.60 >= 1.40 ✓
+        # event_variance_ratio = 0.65 >= 0.50 ✓
+        # implied_move / historical_p75 = 0.07/0.09 = 0.78 <= 0.90 ✓
+        # short_delta = 0.45 >= 0.08 ✓
+        # event_variance_ratio is numerically correct (Bug 1 fixed):
+        #   event_var_daily / total_front_var_daily ≈ 0.65 in [0.50, 1.00]
+        "front_iv": 0.80,
+        "back_iv": 0.50,
+        "iv_ratio": 1.60,
+        "event_variance_ratio": 0.65,
+        "implied_move": 0.07,
+        "historical_p75": 0.09,
+        "historical_p90": 0.12,
+        "short_delta": 0.45,
+        "days_after_event": 0,
+        "front_dte": 7,
+        "back_dte": 35,
+        "gex_net": -2.0e9,
+        "gex_abs": 3.0e9,
+        "spot": 195.0,
+        "mean_abs_move": 0.075,
+        "median_abs_move": 0.070,
+        "skewness": -0.3,
+        "kurtosis": 1.5,
+    },
+    "backspread_unfavorable": {
+        # iv_ratio below threshold — backspread conditions NOT met.
+        # iv_ratio = 1.08 < 1.40 ✗
+        "front_iv": 0.65,
+        "back_iv": 0.60,
+        "iv_ratio": 1.083,
+        "event_variance_ratio": 0.60,
+        "implied_move": 0.07,
+        "historical_p75": 0.09,
+        "historical_p90": 0.12,
+        "short_delta": 0.45,
+        "days_after_event": 0,
+        "front_dte": 7,
+        "back_dte": 35,
+        "gex_net": 0.5e9,
+        "gex_abs": 1.0e9,
+        "spot": 195.0,
+        "mean_abs_move": 0.065,
+        "median_abs_move": 0.060,
+        "skewness": -0.1,
+        "kurtosis": 0.8,
+    },
+    "backspread_overpriced": {
+        # implied_move exceeds P75 threshold — overpriced, not worth buying.
+        # implied_move / historical_p75 = 0.12/0.09 = 1.33 > 0.90 ✗
+        "front_iv": 0.85,
+        "back_iv": 0.50,
+        "iv_ratio": 1.70,
+        "event_variance_ratio": 0.70,
+        "implied_move": 0.12,
+        "historical_p75": 0.09,
+        "historical_p90": 0.12,
+        "short_delta": 0.45,
+        "days_after_event": 0,
+        "front_dte": 7,
+        "back_dte": 35,
+        "gex_net": -1.0e9,
+        "gex_abs": 2.0e9,
+        "spot": 195.0,
+        "mean_abs_move": 0.085,
+        "median_abs_move": 0.080,
+        "skewness": -0.4,
+        "kurtosis": 2.0,
+    },
+    # ── Post-event calendar scenarios ──────────────────────────────────────
+    "post_event_entry": {
+        # All post-event calendar conditions satisfied.
+        # days_after_event = 2 in [1, 3] ✓
+        # iv_ratio = 1.20 >= 1.10 ✓
+        # front_dte = 5 >= 3 ✓
+        # Backspreads NOT favorable: iv_ratio 1.20 < 1.40 ✗
+        # Calendar NOT active: days_after_event != 0 ✗
+        "front_iv": 0.55,
+        "back_iv": 0.46,
+        "iv_ratio": 1.20,
+        "event_variance_ratio": 0.35,
+        "implied_move": 0.06,
+        "historical_p75": 0.09,
+        "historical_p90": 0.12,
+        "short_delta": 0.40,
+        "days_after_event": 2,
+        "front_dte": 5,
+        "back_dte": 33,
+        "gex_net": 0.2e9,
+        "gex_abs": 0.5e9,
+        "spot": 195.0,
+        "mean_abs_move": 0.065,
+        "median_abs_move": 0.060,
+        "skewness": -0.2,
+        "kurtosis": 1.0,
+    },
+    "post_event_flat": {
+        # Post-event but IV already normalised — post-event calendar absent.
+        # iv_ratio = 1.05 < 1.10 ✗
+        "front_iv": 0.47,
+        "back_iv": 0.45,
+        "iv_ratio": 1.044,
+        "event_variance_ratio": 0.20,
+        "implied_move": 0.05,
+        "historical_p75": 0.09,
+        "historical_p90": 0.12,
+        "short_delta": 0.38,
+        "days_after_event": 2,
+        "front_dte": 5,
+        "back_dte": 33,
+        "gex_net": 0.1e9,
+        "gex_abs": 0.3e9,
+        "spot": 195.0,
+        "mean_abs_move": 0.060,
+        "median_abs_move": 0.055,
+        "skewness": -0.1,
+        "kurtosis": 0.7,
+    },
+}
+
+
+def generate_scenario(name: str) -> dict:
+    """Return a market snapshot dict for the named scenario.
+
+    Used by strategy entry-condition tests and acceptance criteria.
+    Returns a copy so callers can mutate without affecting the original.
+
+    Args:
+        name: Scenario name. Valid names are the keys of
+            ``_SNAPSHOT_SCENARIOS``.
+
+    Returns:
+        Dict with all fields needed to evaluate strategy entry
+        conditions and regime classification.
+
+    Raises:
+        KeyError: If ``name`` is not found in ``_SNAPSHOT_SCENARIOS``.
+    """
+    if name not in _SNAPSHOT_SCENARIOS:
+        valid = list(_SNAPSHOT_SCENARIOS.keys())
+        raise KeyError(
+            f"Unknown scenario: {name!r}. Valid names: {valid}"
+        )
+    return dict(_SNAPSHOT_SCENARIOS[name])

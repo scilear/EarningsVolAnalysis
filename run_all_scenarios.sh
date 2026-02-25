@@ -14,7 +14,7 @@ echo ""
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
 
-# Define all test scenarios
+# Define all test scenarios (9 original + 5 v6 backspread/post-event = 14)
 SCENARIOS=(
     "baseline"
     "high_vol"
@@ -25,6 +25,11 @@ SCENARIOS=(
     "negative_event_var"
     "extreme_front_premium"
     "sparse_chain"
+    "backspread_favorable"
+    "backspread_unfavorable"
+    "backspread_overpriced"
+    "post_event_entry"
+    "post_event_flat"
 )
 
 # Track results

@@ -10,6 +10,8 @@ from typing import Iterable
 import pandas as pd
 import yfinance as yf
 
+from nvda_earnings_vol.config import BACK3_DTE_MIN, BACK3_DTE_MAX
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -144,6 +146,34 @@ def get_expiries_after(
 ) -> list[dt.date]:
     """Filter expiries that are on or after a target date."""
     return sorted([exp for exp in expiries if exp >= target_date])
+
+
+def _select_back3_expiry(
+    available_expiries: Iterable[dt.date],
+    back2_expiry: dt.date,
+    as_of_date: dt.date,
+) -> dt.date | None:
+    """Return the first expiry after back2 that falls within the back3 window.
+
+    DTE bounds are read from config (``BACK3_DTE_MIN``, ``BACK3_DTE_MAX``),
+    which are the single source of truth shared with the backspread builder
+    and calendar builder. Changing the config automatically propagates here.
+
+    Args:
+        available_expiries: All available option expiry dates.
+        back2_expiry: The back2 expiry; back3 must be strictly after this.
+        as_of_date: The reference date for computing DTE.
+
+    Returns:
+        The first qualifying back3 expiry, or ``None`` if none found.
+    """
+    for expiry in sorted(available_expiries):
+        if expiry <= back2_expiry:
+            continue
+        dte = (expiry - as_of_date).days
+        if BACK3_DTE_MIN <= dte <= BACK3_DTE_MAX:
+            return expiry
+    return None
 
 
 def _raise_if_market_closed(chain: pd.DataFrame) -> None:
