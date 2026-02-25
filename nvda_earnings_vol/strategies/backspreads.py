@@ -40,20 +40,30 @@ LOGGER = logging.getLogger(__name__)
 def backspread_conditions_met(snapshot: dict[str, Any]) -> bool:
     """Return True if all entry conditions for backspreads are satisfied.
 
+    Conditions (all must pass):
+    * ``iv_ratio`` (front_iv / back_iv) >= BACKSPREAD_MIN_IV_RATIO (1.40)
+    * ``event_variance_ratio`` >= BACKSPREAD_MIN_EVENT_VAR_RATIO (0.50)
+    * ``implied_move`` <= ``historical_p75`` × BACKSPREAD_MAX_IMPLIED_OVER_P75
+    * ``short_delta`` >= BACKSPREAD_MIN_SHORT_DELTA (0.08)
+    * ``back_dte`` in [BACK3_DTE_MIN, BACK3_DTE_MAX] (21–45 days) — ensures
+      the long leg expiry is within the same window used by the data loader.
+      This is a redundant guard: ``_select_back3_expiry()`` already filters
+      to this range, so a mismatch here signals a data-wiring bug.
+
     Args:
         snapshot: Market snapshot dict. Required keys:
             ``iv_ratio``, ``event_variance_ratio``, ``implied_move``,
-            ``historical_p75``, ``short_delta``.
+            ``historical_p75``, ``short_delta``, ``back_dte``.
 
     Returns:
-        True when iv_ratio, event dominance, implied-move pricing, and
-        short-leg delta all exceed their respective thresholds.
+        True when all five conditions are met.
     """
     iv_ratio = float(snapshot.get("iv_ratio", 0.0))
     event_var_ratio = float(snapshot.get("event_variance_ratio", 0.0))
     implied_move = float(snapshot.get("implied_move", 0.0))
     historical_p75 = float(snapshot.get("historical_p75", 1.0))
     short_delta = float(snapshot.get("short_delta", 0.0))
+    back_dte = int(snapshot.get("back_dte", 0))
 
     iv_ok = iv_ratio >= BACKSPREAD_MIN_IV_RATIO
     event_ok = event_var_ratio >= BACKSPREAD_MIN_EVENT_VAR_RATIO
@@ -61,6 +71,7 @@ def backspread_conditions_met(snapshot: dict[str, Any]) -> bool:
         implied_move <= historical_p75 * BACKSPREAD_MAX_IMPLIED_OVER_P75
     )
     delta_ok = short_delta >= BACKSPREAD_MIN_SHORT_DELTA
+    dte_ok = BACK3_DTE_MIN <= back_dte <= BACK3_DTE_MAX
 
     if not iv_ok:
         LOGGER.debug(
@@ -87,8 +98,15 @@ def backspread_conditions_met(snapshot: dict[str, Any]) -> bool:
             short_delta,
             BACKSPREAD_MIN_SHORT_DELTA,
         )
+    if not dte_ok:
+        LOGGER.debug(
+            "Backspread gate: back_dte %d not in [%d, %d]",
+            back_dte,
+            BACK3_DTE_MIN,
+            BACK3_DTE_MAX,
+        )
 
-    return iv_ok and event_ok and pricing_ok and delta_ok
+    return iv_ok and event_ok and pricing_ok and delta_ok and dte_ok
 
 
 def build_call_backspread(
