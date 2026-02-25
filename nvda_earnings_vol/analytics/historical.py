@@ -7,9 +7,56 @@ import logging
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+def compute_distribution_shape(signed_moves: list[float]) -> dict:
+    """
+    Compute distribution shape statistics from historical earnings moves.
+    
+    Parameters
+    ----------
+    signed_moves : list of float
+        List of signed percentage returns (not absolute values)
+    
+    Returns
+    -------
+    dict with distribution statistics:
+        - mean_abs_move: mean of absolute moves
+        - median_abs_move: median of absolute moves
+        - skewness: skewness of signed moves
+        - kurtosis: excess kurtosis of signed moves
+        - tail_probs: dict of P(|Move| > threshold) for various thresholds
+    """
+    if not signed_moves:
+        return {
+            "mean_abs_move": 0.0,
+            "median_abs_move": 0.0,
+            "skewness": 0.0,
+            "kurtosis": 0.0,
+            "tail_probs": {},
+        }
+    
+    arr = np.array(signed_moves)
+    abs_arr = np.abs(arr)
+    
+    # Tail probability thresholds
+    tail_thresholds = [0.05, 0.08, 0.10, 0.12, 0.15]
+    tail_probs = {
+        t: float(np.mean(abs_arr > t))
+        for t in tail_thresholds
+    }
+    
+    return {
+        "mean_abs_move": float(np.mean(abs_arr)),
+        "median_abs_move": float(np.median(abs_arr)),
+        "skewness": float(stats.skew(arr)),
+        "kurtosis": float(stats.kurtosis(arr)),  # excess kurtosis
+        "tail_probs": tail_probs,
+    }
 
 
 def earnings_move_p75(
@@ -78,3 +125,43 @@ def _prev_trading_day(
             return prev
         prev = day
     return prev
+
+
+def extract_earnings_moves(
+    history: pd.DataFrame,
+    earnings_dates: list[pd.Timestamp],
+) -> list[float]:
+    """
+    Extract signed earnings gap moves from price history.
+    
+    Parameters
+    ----------
+    history : pd.DataFrame
+        Price history with 'Date' and 'Close' columns
+    earnings_dates : list of pd.Timestamp
+        Earnings announcement dates
+    
+    Returns
+    -------
+    list of float
+        Signed percentage moves (event_close / prev_close - 1.0)
+    """
+    if history.empty or not earnings_dates:
+        return []
+    
+    history = history.copy()
+    history["Date"] = pd.to_datetime(history["Date"]).dt.date
+    close_map = history.set_index("Date")["Close"].to_dict()
+    trading_days = sorted(close_map.keys())
+    
+    signed_moves = []
+    for earnings_dt in earnings_dates:
+        event_date = _event_trading_day(trading_days, earnings_dt)
+        prev_date = _prev_trading_day(trading_days, event_date)
+        if event_date is None or prev_date is None:
+            continue
+        prev_close = close_map[prev_date]
+        event_close = close_map[event_date]
+        signed_moves.append(event_close / prev_close - 1.0)
+    
+    return signed_moves

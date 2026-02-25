@@ -17,8 +17,15 @@ def implied_move_from_chain(
     chain: pd.DataFrame, spot: float, slippage_pct: float
 ) -> float:
     """Compute implied move as slippage-adjusted ATM straddle price / spot."""
+    if chain.empty:
+        raise ValueError("Empty option chain provided.")
+    
     chain = chain.copy()
     chain["distance"] = (chain["strike"] - spot).abs()
+    
+    if chain.empty:
+        raise ValueError("Option chain has no valid strikes.")
+    
     atm_strike = chain.sort_values("distance").iloc[0]["strike"]
     atm = chain[chain["strike"] == atm_strike]
 

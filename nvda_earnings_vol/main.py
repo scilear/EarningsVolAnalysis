@@ -11,9 +11,14 @@ import numpy as np
 import pandas as pd
 
 from nvda_earnings_vol import config
+from nvda_earnings_vol.alignment import compute_all_alignments
 from nvda_earnings_vol.analytics.event_vol import event_variance
 from nvda_earnings_vol.analytics.gamma import gex_summary
-from nvda_earnings_vol.analytics.historical import earnings_move_p75
+from nvda_earnings_vol.analytics.historical import (
+    compute_distribution_shape,
+    earnings_move_p75,
+    extract_earnings_moves,
+)
 from nvda_earnings_vol.analytics.implied_move import implied_move_from_chain
 from nvda_earnings_vol.analytics.skew import skew_metrics
 from nvda_earnings_vol.data.filters import (
@@ -29,9 +34,16 @@ from nvda_earnings_vol.data.loader import (
     get_price_history,
     get_spot_price,
 )
+from nvda_earnings_vol.data.test_data import (
+    generate_test_data_set,
+    list_available_scenarios,
+    load_test_data,
+    save_test_data,
+)
+from nvda_earnings_vol.regime import classify_regime
 from nvda_earnings_vol.reports.reporter import write_report
 from nvda_earnings_vol.simulation.monte_carlo import simulate_moves
-from nvda_earnings_vol.strategies.payoff import strategy_pnl
+from nvda_earnings_vol.strategies.payoff import strategy_pnl_vec
 from nvda_earnings_vol.strategies.scoring import (
     compute_metrics,
     score_strategies,
@@ -79,6 +91,30 @@ def main() -> None:
         default=None,
         help="Random seed for Monte Carlo reproducibility",
     )
+    parser.add_argument(
+        "--test-data",
+        action="store_true",
+        help="Use synthetic test data instead of live market data",
+    )
+    parser.add_argument(
+        "--test-scenario",
+        type=str,
+        default="baseline",
+        choices=list_available_scenarios(),
+        help="Test data scenario to use (only with --test-data)",
+    )
+    parser.add_argument(
+        "--test-data-dir",
+        type=str,
+        default=None,
+        help="Load test data from directory (instead of generating)",
+    )
+    parser.add_argument(
+        "--save-test-data",
+        type=str,
+        default=None,
+        help="Save generated test data to specified directory",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -86,79 +122,115 @@ def main() -> None:
         format="%(levelname)s: %(message)s",
     )
 
-    event_date = _parse_event_date(args.event_date)
-    if event_date is None:
-        event_date = get_next_earnings_date(config.TICKER)
-    if event_date is None:
-        raise ValueError("Event date not provided and could not be fetched.")
-    event_date = _normalize_event_date(event_date)
-    if event_date <= dt.date.today():
-        raise ValueError("Event date must be in the future.")
-
-    try:
-        spot = get_spot_price(config.TICKER)
-        expiries = get_option_expiries(config.TICKER)
-        post_event = get_expiries_after(expiries, event_date)
-        if len(post_event) < 2:
-            raise ValueError("Insufficient expiries after event date.")
-
-        front_expiry = post_event[0]
-        _validate_front_expiry(event_date, front_expiry)
-        back1_expiry = post_event[1]
-        back2_expiry = post_event[2] if len(post_event) > 2 else None
-
-        cache_dir = Path(args.cache_dir)
-        front_chain = _load_filtered_chain(
+    # Branch: test data vs live data
+    if args.test_data:
+        test_data = _load_test_data_mode(args)
+        spot = test_data["spot"]
+        event_date = test_data["event_date"]
+        front_expiry = test_data["front_expiry"]
+        back1_expiry = test_data["back_expiry"]
+        back2_expiry = None  # Test data doesn't include back2
+        front_chain = _filter_chain_for_test(test_data["front_chain"], spot)
+        back1_chain = _filter_chain_for_test(test_data["back_chain"], spot)
+        back2_chain = None
+        history = test_data["history"]
+        earnings_dates = test_data["earnings_dates"]
+        LOGGER.info(
+            "Test data loaded: spot=%.2f, event=%s, front_exp=%s, back_exp=%s",
+            spot,
+            event_date,
             front_expiry,
-            spot,
-            cache_dir,
-            args.use_cache,
-            args.refresh_cache,
-        )
-        back1_chain = _load_filtered_chain(
             back1_expiry,
-            spot,
-            cache_dir,
-            args.use_cache,
-            args.refresh_cache,
         )
-        back2_chain = (
-            _load_filtered_chain(
-                back2_expiry,
+    else:
+        # Live data mode (existing logic)
+        event_date = _parse_event_date(args.event_date)
+        if event_date is None:
+            event_date = get_next_earnings_date(config.TICKER)
+        if event_date is None:
+            raise ValueError("Event date not provided and could not be fetched.")
+        event_date = _normalize_event_date(event_date)
+        # Allow past event dates for test mode, but require future for live
+        if not args.test_data and event_date <= dt.date.today():
+            LOGGER.warning(
+                "Event date %s is not in the future. Proceeding anyway for testing.",
+                event_date,
+            )
+
+        try:
+            spot = get_spot_price(config.TICKER)
+            expiries = get_option_expiries(config.TICKER)
+            post_event = get_expiries_after(expiries, event_date)
+            if len(post_event) < 2:
+                raise ValueError("Insufficient expiries after event date.")
+
+            front_expiry = post_event[0]
+            _validate_front_expiry(event_date, front_expiry)
+            back1_expiry = post_event[1]
+            back2_expiry = post_event[2] if len(post_event) > 2 else None
+
+            cache_dir = Path(args.cache_dir)
+            front_chain = _load_filtered_chain(
+                front_expiry,
                 spot,
                 cache_dir,
                 args.use_cache,
                 args.refresh_cache,
-                allow_empty=True,
             )
-            if back2_expiry
-            else None
-        )
-        if back2_chain is None:
-            back2_expiry = None
-    except ValueError as exc:
-        message = str(exc)
-        if "market appears closed" in message.lower():
-            LOGGER.error(
-                "Market appears closed or data unavailable; exiting (%s)",
-                exc,
+            back1_chain = _load_filtered_chain(
+                back1_expiry,
+                spot,
+                cache_dir,
+                args.use_cache,
+                args.refresh_cache,
             )
-        else:
-            LOGGER.error("%s", exc)
-        return
+            back2_chain = (
+                _load_filtered_chain(
+                    back2_expiry,
+                    spot,
+                    cache_dir,
+                    args.use_cache,
+                    args.refresh_cache,
+                    allow_empty=True,
+                )
+                if back2_expiry
+                else None
+            )
+            if back2_chain is None:
+                back2_expiry = None
+        except ValueError as exc:
+            message = str(exc)
+            if "market appears closed" in message.lower():
+                LOGGER.error(
+                    "Market appears closed or data unavailable; exiting (%s)",
+                    exc,
+                )
+            else:
+                LOGGER.error("%s", exc)
+            return
 
+        try:
+            history = get_price_history(config.TICKER, config.HISTORY_YEARS)
+            earnings_dates = get_earnings_dates(config.TICKER)
+        except ValueError as exc:
+            LOGGER.error("%s", exc)
+            return
+
+    # Compute implied move and historical stats (common to both modes)
     try:
         implied_move = implied_move_from_chain(
             front_chain,
             spot,
             config.SLIPPAGE_PCT,
         )
-        history = get_price_history(config.TICKER, config.HISTORY_YEARS)
-        earnings_dates = get_earnings_dates(config.TICKER)
         hist_p75 = earnings_move_p75(history, earnings_dates)
     except ValueError as exc:
         LOGGER.error("%s", exc)
         return
+
+    # Extract historical distribution shape
+    signed_moves = extract_earnings_moves(history, earnings_dates)
+    dist_shape = compute_distribution_shape(signed_moves)
 
     event_info = event_variance(
         front_chain,
@@ -171,21 +243,20 @@ def main() -> None:
         back2_expiry,
     )
 
-    front_iv = float(event_info["front_iv"])
-    back_iv = float(event_info["back_iv"])
-    event_vol = float(np.sqrt(event_info["event_var"]))
+    front_iv = float(event_info["front_iv"]) if event_info["front_iv"] is not None else 0.0
+    back_iv = float(event_info["back_iv"]) if event_info["back_iv"] is not None else 0.0
+    back2_iv = event_info.get("back2_iv")
+    event_vol = float(np.sqrt(float(event_info["event_var"])))
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
-    term_structure_note = None
-    if front_iv < back_iv:
-        term_structure_note = (
-            "Front IV below back IV; term structure inversion."
-        )
-        LOGGER.warning(term_structure_note)
+    
+    # Get term structure note from event_info
+    term_structure_note = event_info.get("term_structure_note")
 
     t_front = business_days(dt.date.today(), front_expiry) / 252.0
     t_front = max(t_front, config.TIME_EPSILON)
     gex = gex_summary(front_chain, spot, t_front)
     skew = skew_metrics(front_chain, spot, t_front)
+    
     gex_note = None
     if (
         gex["abs_gex"] >= config.GEX_LARGE_ABS
@@ -216,7 +287,7 @@ def main() -> None:
 
     results = []
     for strategy in strategies:
-        base_pnls = strategy_pnl(
+        base_pnls = strategy_pnl_vec(
             strategy,
             combined_chain,
             spot,
@@ -229,10 +300,29 @@ def main() -> None:
             config.SLIPPAGE_PCT,
             "base_crush",
         )
+        
+        # Compute scenario EVs for each strategy
+        scenario_evs = {}
+        for scenario in scenarios:
+            pnls = strategy_pnl_vec(
+                strategy,
+                combined_chain,
+                spot,
+                moves_by_shock[0],
+                front_expiry,
+                back1_expiry,
+                event_date,
+                front_iv,
+                back_iv,
+                config.SLIPPAGE_PCT,
+                scenario,
+            )
+            scenario_evs[scenario] = float(np.mean(pnls))
+        
         evs = []
         for scenario in scenarios:
             for shock in shock_levels:
-                pnls = strategy_pnl(
+                pnls = strategy_pnl_vec(
                     strategy,
                     combined_chain,
                     spot,
@@ -246,8 +336,10 @@ def main() -> None:
                     scenario,
                 )
                 evs.append(float(np.mean(pnls)))
+        
         scenario_ev_std = float(np.std(evs)) if len(evs) > 1 else 0.0
         robustness = 1.0 / (scenario_ev_std + 1e-9)
+        
         metrics = compute_metrics(
             strategy,
             base_pnls,
@@ -255,8 +347,9 @@ def main() -> None:
             hist_p75,
             spot,
             robustness,
+            scenario_evs=scenario_evs,
         )
-        metrics["scenario_evs"] = evs
+        metrics["scenario_evs"] = scenario_evs
         pnls = base_pnls
         metrics["pnls"] = pnls
         results.append(metrics)
@@ -268,7 +361,7 @@ def main() -> None:
     ev_base = float(np.mean(top["pnls"]))
     ev_2x = float(
         np.mean(
-            strategy_pnl(
+            strategy_pnl_vec(
                 top_strategy,
                 combined_chain,
                 spot,
@@ -293,37 +386,68 @@ def main() -> None:
     rr25_value = f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
     bf25_value = f"{skew['bf25']:.4f}" if skew["bf25"] is not None else "N/A"
 
+    # Build comprehensive snapshot
+    snapshot = {
+        "spot": spot,
+        "event_date": event_date,
+        "front_expiry": front_expiry,
+        "back_expiry": back1_expiry,
+        "implied_move": implied_move,
+        "historical_p75": hist_p75,
+        "front_iv": front_iv,
+        "back_iv": back_iv,
+        "back2_iv": back2_iv,
+        "event_vol": event_vol,
+        "event_vol_ratio": event_vol_ratio,
+        "expected_move_dollar": expected_move_dollar,
+        "raw_event_var": event_info["raw_event_var"],
+        "event_variance_ratio": event_info.get("event_variance_ratio", 0.0),
+        "front_back_spread": event_info.get("front_back_spread", 0.0),
+        "back_slope": event_info.get("back_slope"),
+        "t_front": event_info.get("t_front", t_front),
+        "t_back1": event_info.get("t_back1", t_front + 20/252),
+        "interpolation_method": event_info.get("interpolation_method", "unknown"),
+        "negative_event_var": event_info.get("negative_event_var", False),
+        "term_structure_note": term_structure_note,
+        "warning_level": event_info["warning_level"],
+        "assumption": event_info["assumption"],
+        "gex_net": gex["net_gex"],
+        "gex_abs": gex["abs_gex"],
+        "gamma_flip": gex.get("gamma_flip"),
+        "flip_distance_pct": gex.get("flip_distance_pct"),
+        "top_gamma_strikes": gex.get("top_gamma_strikes", []),
+        "gex_dealer_note": (
+            "GEX sign assumes dealers are net short options. "
+            "Interpret regime direction accordingly."
+        ),
+        "gex_note": gex_note,
+        "mean_abs_move": dist_shape["mean_abs_move"],
+        "median_abs_move": dist_shape["median_abs_move"],
+        "skewness": dist_shape["skewness"],
+        "kurtosis": dist_shape["kurtosis"],
+        "tail_probs": dist_shape.get("tail_probs", {}),
+        "rr25": rr25_value,
+        "bf25": bf25_value,
+        "ev_base": ev_base,
+        "ev_2x": ev_2x,
+    }
+
+    # Classify regime
+    regime = classify_regime(snapshot)
+    snapshot["regime"] = regime
+
+    # Compute alignment for all strategies
+    compute_all_alignments(ranked, regime)
+
     report_path = Path(args.output)
     write_report(
         report_path,
         {
-            "spot": f"{spot:.2f}",
-            "event_date": event_date,
-            "front_expiry": front_expiry,
-            "implied_move": f"{implied_move:.4f}",
-            "historical_p75": f"{hist_p75:.4f}",
-            "event_vol": f"{event_vol:.4f}",
-            "event_vol_ratio": f"{event_vol_ratio:.4f}",
-            "expected_move_dollar": f"{expected_move_dollar:.2f}",
-            "raw_event_var": f"{event_info['raw_event_var']:.6f}",
-            "event_var_ratio": f"{event_info['ratio']:.4f}",
-            "warning_level": event_info["warning_level"],
-            "assumption": event_info["assumption"],
-            "term_structure_note": term_structure_note,
-            "ev_base": f"{ev_base:.2f}",
-            "ev_2x": f"{ev_2x:.2f}",
-            "net_gex": f"{gex['net_gex']:.2f}",
-            "abs_gex": f"{gex['abs_gex']:.2f}",
-            "gex_dealer_note": (
-                "GEX sign assumes dealers are net short options. "
-                "Interpret regime direction accordingly."
-            ),
-            "gex_note": gex_note,
+            "snapshot": snapshot,
+            "regime": regime,
             "rankings": ranked,
             "move_plot": move_plot,
             "pnl_plot": pnl_plot,
-            "rr25": rr25_value,
-            "bf25": bf25_value,
         },
     )
 
@@ -335,6 +459,7 @@ def main() -> None:
         ev_base,
         ev_2x,
         gex,
+        regime,
     )
 
     LOGGER.info("Report written to %s", report_path)
@@ -359,6 +484,46 @@ def _validate_front_expiry(event_date: dt.date, front_expiry: dt.date) -> None:
             f"{event_date}. "
             "Check your event date or option chain data."
         )
+
+
+def _load_test_data_mode(
+    args: argparse.Namespace,
+) -> dict:
+    """Load or generate synthetic test data for validation."""
+    if args.test_data_dir:
+        LOGGER.info("Loading test data from %s", args.test_data_dir)
+        return load_test_data(Path(args.test_data_dir))
+
+    LOGGER.info(
+        "Generating synthetic test data (scenario: %s)",
+        args.test_scenario,
+    )
+    seed = args.seed if args.seed is not None else 42
+    test_data = generate_test_data_set(
+        scenario=args.test_scenario,
+        seed=seed,
+    )
+
+    if args.save_test_data:
+        save_test_data(test_data, Path(args.save_test_data))
+        LOGGER.info("Saved test data to %s", args.save_test_data)
+
+    return test_data
+
+
+def _filter_chain_for_test(
+    chain: pd.DataFrame,
+    spot: float,
+) -> pd.DataFrame:
+    """Apply standard filters to test chain."""
+    chain = filter_by_moneyness(
+        chain,
+        spot,
+        config.MONEYNESS_LOW,
+        config.MONEYNESS_HIGH,
+    )
+    chain = filter_by_liquidity(chain, config.MIN_OI, config.MAX_SPREAD_PCT)
+    return chain
 
 
 def _load_filtered_chain(
@@ -406,18 +571,38 @@ def _print_console_snapshot(
     ev_base: float,
     ev_2x: float,
     gex: dict,
+    regime: dict | None = None,
 ) -> None:
-    print("\nVol Diagnostics")
-    print(f"ImpliedMove: {implied_move:.4f}")
-    print(f"Historical P75: {hist_p75:.4f}")
+    print("\n" + "="*60)
+    print("VOLATILITY DIAGNOSTICS")
+    print("="*60)
+    print(f"ImpliedMove:        {implied_move:.4f}")
+    print(f"Historical P75:       {hist_p75:.4f}")
     implied_ratio = implied_move / max(hist_p75, 1e-9)
-    print(f"ImpliedMove / P75: {implied_ratio:.4f}")
-    print(f"EventVol: {event_vol:.4f}")
-    print(f"EventVol / FrontIV: {event_vol_ratio:.4f}")
-
-    print("\nMicrostructure Diagnostics")
+    print(f"ImpliedMove / P75:    {implied_ratio:.4f}")
+    print(f"EventVol:             {event_vol:.4f}")
+    print(f"EventVol / FrontIV:   {event_vol_ratio:.4f}")
+    
+    if regime:
+        print("\n" + "="*60)
+        print("REGIME CLASSIFICATION")
+        print("="*60)
+        print(f"Vol Pricing:          {regime['vol_regime']}")
+        print(f"Event Structure:      {regime['event_regime']}")
+        print(f"Term Structure:       {regime['term_structure_regime']}")
+        print(f"Gamma Regime:         {regime['gamma_regime']}")
+        print(f"Composite Regime:     {regime['composite_regime']}")
+        print(f"Composite Confidence: {regime['confidence']:.2f}")
+    
+    print("\n" + "="*60)
+    print("MICROSTRUCTURE DIAGNOSTICS")
+    print("="*60)
     print(f"Slippage sensitivity (EV delta): {ev_2x - ev_base:.2f}")
-    print(f"GEX net: {gex['net_gex']:.2f}, abs: {gex['abs_gex']:.2f}")
+    print(f"GEX net:  {gex['net_gex']:.2f}")
+    print(f"GEX abs:  {gex['abs_gex']:.2f}")
+    if gex.get('gamma_flip'):
+        print(f"Gamma Flip: {gex['gamma_flip']:.2f}")
+    print("="*60)
 
 
 if __name__ == "__main__":

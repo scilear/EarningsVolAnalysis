@@ -8,13 +8,13 @@ from nvda_earnings_vol.strategies.structures import build_strategies
 
 
 def _chain(expiry: str) -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "strike": [90.0, 95.0, 100.0, 105.0, 110.0],
-            "option_type": ["call", "call", "call", "call", "call"],
-            "expiry": [pd.Timestamp(expiry)] * 5,
-        }
-    )
+    """Create a test chain with both calls and puts."""
+    strikes = [90.0, 95.0, 100.0, 105.0, 110.0]
+    rows = []
+    for strike in strikes:
+        rows.append({"strike": strike, "option_type": "call", "expiry": pd.Timestamp(expiry)})
+        rows.append({"strike": strike, "option_type": "put", "expiry": pd.Timestamp(expiry)})
+    return pd.DataFrame(rows)
 
 
 def test_build_strategies_count() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 
@@ -41,4 +42,27 @@ def execution_price(
         return mid + adjustment
     if side == "sell":
         return mid - adjustment
+    raise ValueError("side must be 'buy' or 'sell'")
+
+
+def execution_price_vec(
+    mid_arr: np.ndarray, spread: float, side: str, slippage_pct: float
+) -> np.ndarray:
+    """Vectorized execution price adjusted by slippage.
+
+    Args:
+        mid_arr: Array of mid prices (shape: (N,))
+        spread: Spread (scalar, from option lookup)
+        side: 'buy' or 'sell'
+        slippage_pct: Slippage percentage to cross
+
+    Returns:
+        Array of execution prices (shape: (N,))
+    """
+    mid_arr = np.asarray(mid_arr, dtype=np.float64)
+    half_spread_cost = 0.5 * spread * slippage_pct
+    if side == "buy":
+        return mid_arr + half_spread_cost
+    if side == "sell":
+        return mid_arr - half_spread_cost
     raise ValueError("side must be 'buy' or 'sell'")

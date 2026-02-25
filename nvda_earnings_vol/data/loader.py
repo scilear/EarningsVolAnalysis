@@ -87,8 +87,13 @@ def get_options_chain(
     _raise_if_market_closed(combined)
 
     if cache_path is not None:
-        combined.to_csv(cache_path, index=False)
-        LOGGER.info("Saved options chain to cache: %s", cache_path)
+        if _is_cache_data_valid(combined):
+            combined.to_csv(cache_path, index=False)
+            LOGGER.info("Saved options chain to cache: %s", cache_path)
+        else:
+            LOGGER.warning(
+                "Skipping cache save: data contains invalid (zero) prices"
+            )
 
     return combined
 
@@ -151,3 +156,19 @@ def _raise_if_market_closed(chain: pd.DataFrame) -> None:
             "Options bid/ask are all 0.00; market appears closed or "
             "data unavailable."
         )
+
+
+def _is_cache_data_valid(chain: pd.DataFrame) -> bool:
+    """Return False if chain has invalid prices (all zeros or NaN)."""
+    if chain.empty:
+        return False
+    bids = chain["bid"].fillna(0.0)
+    asks = chain["ask"].fillna(0.0)
+    # Check if all prices are zero (invalid data)
+    if (bids == 0).all() and (asks == 0).all():
+        return False
+    # Check if spot prices (implied by mid) are reasonable
+    mids = (bids + asks) / 2.0
+    if (mids == 0).all():
+        return False
+    return True

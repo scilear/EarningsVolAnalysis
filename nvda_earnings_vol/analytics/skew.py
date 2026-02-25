@@ -6,7 +6,7 @@ import logging
 
 import pandas as pd
 
-from nvda_earnings_vol.analytics.bsm import option_delta
+from nvda_earnings_vol.analytics.bsm import delta as option_delta
 from nvda_earnings_vol.config import DIVIDEND_YIELD, RISK_FREE_RATE
 from nvda_earnings_vol.utils import atm_iv as calc_atm_iv
 
