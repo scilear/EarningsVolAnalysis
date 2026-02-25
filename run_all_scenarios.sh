@@ -7,6 +7,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_DIR="${SCRIPT_DIR}/reports/test_scenarios"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+# Use the project venv so all dependencies (jinja2, yfinance, etc.) are available.
+PYTHON="${SCRIPT_DIR}/.venv/bin/python3"
+if [[ ! -x "${PYTHON}" ]]; then
+    echo "ERROR: venv not found at ${PYTHON}"
+    echo "Run: python3 -m venv .venv && pip install -r nvda_earnings_vol/requirements.txt"
+    exit 1
+fi
+
 echo "=== NVDA Earnings Vol Analysis - Test Scenario Runner ==="
 echo "Output directory: ${OUTPUT_DIR}"
 echo ""
@@ -45,7 +53,7 @@ for scenario in "${SCENARIOS[@]}"; do
     
     start_time=$(date +%s)
     
-    if python3 -m nvda_earnings_vol.main \
+    if "${PYTHON}" -m nvda_earnings_vol.main \
         --test-data \
         --test-scenario "${scenario}" \
         --output "${output_file}"; then
@@ -225,7 +233,7 @@ for scenario in "${SCENARIOS[@]}"; do
     duration="${DURATIONS[${scenario}]}"
     
     # Get scenario description from Python
-    description=$(python3 -c "
+    description=$("${PYTHON}" -c "
 import sys
 sys.path.insert(0, '${SCRIPT_DIR}')
 from nvda_earnings_vol.data.test_data import TEST_SCENARIOS
