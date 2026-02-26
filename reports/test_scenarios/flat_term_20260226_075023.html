@@ -1,0 +1,1778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>NVDA Earnings Volatility Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1b1b1b; background: #fafafa; }
+    h1 { color: #16334c; border-bottom: 3px solid #16334c; padding-bottom: 12px; }
+    h2 { color: #16334c; margin-top: 32px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+    h3 { color: #2c5282; }
+    h4 { color: #4a5568; margin-top: 20px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 0.95em; }
+    th, td { border: 1px solid #cbd5e0; padding: 10px 12px; text-align: left; }
+    th { background-color: #edf2f7; font-weight: 600; }
+    tr:nth-child(even) { background-color: #f7fafc; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
+    .note { font-size: 0.9em; color: #4a5568; background: #fffaf0; padding: 12px; border-left: 4px solid #ed8936; margin: 12px 0; }
+    .regime-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin: 24px 0; }
+    .regime-summary { background: #f7fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin: 16px 0; }
+    .regime-strength { background: #fffaf0; padding: 16px; border-radius: 8px; border-left: 4px solid #ed8936; margin: 16px 0; }
+    .trade-sheet { border: 2px solid #2c5282; padding: 24px; margin-bottom: 40px; border-radius: 8px; background: #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .heatmap-cell { text-align: center; padding: 16px; font-weight: bold; color: white; border-radius: 4px; }
+    .highlight-row { background: #1a202c !important; color: white !important; }
+    .highlight-row td { color: white !important; }
+    .strategy-header { background: #2c5282; color: white; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+    .metric-box { background: #edf2f7; padding: 12px; border-radius: 4px; text-align: center; }
+    .metric-label { font-size: 0.8em; color: #718096; text-transform: uppercase; }
+    .metric-value { font-size: 1.2em; font-weight: bold; color: #2d3748; }
+    details { margin: 12px 0; }
+    summary { cursor: pointer; font-weight: 600; color: #4a5568; padding: 8px 12px;
+              background: #edf2f7; border-radius: 4px; user-select: none; }
+    summary:hover { background: #e2e8f0; }
+    details[open] summary { border-radius: 4px 4px 0 0; }
+    .rationale-body { background: #f7fafc; border: 1px solid #e2e8f0;
+                      border-top: none; border-radius: 0 0 4px 4px;
+                      padding: 12px 16px; font-size: 0.95em; color: #4a5568;
+                      line-height: 1.6; }
+    .not-applicable { background: #fff5f5; border-left: 4px solid #fc8181;
+                      padding: 10px 16px; margin: 8px 0; border-radius: 0 4px 4px 0; }
+    .not-applicable strong { color: #c53030; }
+    .not-applicable small { color: #718096; }
+  </style>
+</head>
+<body>
+  <h1>NVDA Earnings Volatility Report</h1>
+  
+  <div class="metric-grid">
+    <div class="metric-box">
+      <div class="metric-label">Spot</div>
+      <div class="metric-value">$130.00</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-label">Event Date</div>
+      <div class="metric-value">2026-03-05</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-label">Front Expiry</div>
+      <div class="metric-value">2026-03-12</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-label">Back Expiry</div>
+      <div class="metric-value">2026-04-09</div>
+    </div>
+  </div>
+
+  <div class="regime-header">
+    <h2 style="margin: 0; border: none; color: white;">Regime Classification Engine</h2>
+    <p style="margin: 8px 0 0 0; opacity: 0.9;">Market environment classification with confidence scoring</p>
+  </div>
+
+  <div class="regime-summary">
+    <table>
+      <tr>
+        <th>Vol Pricing Regime</th>
+        <td>Fairly Priced</td>
+        <th>Signal Strength</th>
+        <td>0.08</td>
+      </tr>
+      <tr>
+        <th>Event Structure</th>
+        <td>Pure Binary Event</td>
+        <th>Signal Strength</th>
+        <td>1.00</td>
+      </tr>
+      <tr>
+        <th>Term Structure</th>
+        <td>Normal Structure</td>
+        <th>—</th>
+        <td>—</td>
+      </tr>
+      <tr>
+        <th>Dealer Gamma Regime</th>
+        <td>Neutral Gamma</td>
+        <th>Signal Strength</th>
+        <td>0.03</td>
+      </tr>
+      <tr class="highlight-row">
+        <th>Composite Event Regime</th>
+        <td><strong>Mixed / Transitional Setup</strong></td>
+        <th>Composite Confidence</th>
+        <td><strong>0.34</strong></td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>Volatility Regime Summary</h2>
+
+  <table>
+    <tr>
+      <th>Spot</th>
+      <td>$130.00</td>
+      <th>Expected Move ($)</th>
+      <td>$11.17</td>
+    </tr>
+    <tr>
+      <th>Implied Move</th>
+      <td>8.59%</td>
+      <th>Historical P75</th>
+      <td>8.73%</td>
+    </tr>
+    <tr>
+      <th>Implied / P75</th>
+      <td>0.984</td>
+      <th>Vol Regime</th>
+      <td><strong>Fairly Priced</strong></td>
+    </tr>
+  </table>
+
+  <h4>Term Structure Diagnostics</h4>
+  <table>
+    <tr>
+      <th>Front IV</th>
+      <td>55.00%</td>
+      <th>Back1 IV</th>
+      <td>55.00%</td>
+      
+    </tr>
+    <tr>
+      <th>Front–Back Spread</th>
+      <td>0.00 vol pts</td>
+      <th>Term Structure</th>
+      <td colspan="2">Normal Structure</td>
+    </tr>
+  </table>
+
+  <h4>Event Variance Attribution</h4>
+  <table>
+    <tr>
+      <th>Raw Event Var</th>
+      <td>0.001200</td>
+      <th>EventVar / TotalFrontVar</th>
+      <td>2520.0%</td>
+    </tr>
+    <tr>
+      <th>Event Structure</th>
+      <td><strong>Pure Binary Event</strong></td>
+      <th>Interpolation Method</th>
+      <td>Two-point term structure interpolation</td>
+    </tr>
+    
+  </table>
+
+  <h4>Historical Distribution</h4>
+  <table>
+    <tr>
+      <th>Mean |Move|</th>
+      <td>7.58%</td>
+      <th>Median |Move|</th>
+      <td>7.82%</td>
+    </tr>
+    <tr>
+      <th>Skewness</th>
+      <td>-0.904</td>
+      <th>Excess Kurtosis</th>
+      <td>-0.574</td>
+    </tr>
+  </table>
+
+  
+  <h4>Tail Probability Table</h4>
+  <table>
+    <tr>
+      
+      <th>P(|Move| &gt; 5%)</th>
+      
+      <th>P(|Move| &gt; 8%)</th>
+      
+      <th>P(|Move| &gt; 10%)</th>
+      
+      <th>P(|Move| &gt; 12%)</th>
+      
+      <th>P(|Move| &gt; 15%)</th>
+      
+    </tr>
+    <tr>
+      
+      <td>83.3%</td>
+      
+      <td>50.0%</td>
+      
+      <td>8.3%</td>
+      
+      <td>8.3%</td>
+      
+      <td>0.0%</td>
+      
+    </tr>
+  </table>
+  
+
+  <h2>Dealer Positioning & Microstructure</h2>
+
+  <table>
+    <tr>
+      <th>Net GEX</th>
+      <td>68.24M</td>
+      <th>Abs GEX</th>
+      <td>2.31B</td>
+    </tr>
+    <tr>
+      <th>Gamma Regime</th>
+      <td>Neutral Gamma</td>
+      <th>Flip Level</th>
+      <td>
+        
+          No flip detected in chain
+        
+      </td>
+    </tr>
+  </table>
+
+  <p class="note">GEX sign assumes dealers are net short options. Interpret regime direction accordingly.</p>
+
+  <h4>Top 3 Strikes by Gamma Concentration</h4>
+  <table>
+    <tr>
+      <th>Strike</th>
+      <th>GEX</th>
+      <th>% of Abs GEX</th>
+    </tr>
+    
+    <tr>
+      <td>$127.50</td>
+      <td>40.71M</td>
+      <td>1.8%</td>
+    </tr>
+    
+    <tr>
+      <td>$130.00</td>
+      <td>37.34M</td>
+      <td>1.6%</td>
+    </tr>
+    
+    <tr>
+      <td>$132.50</td>
+      <td>-36.65M</td>
+      <td>1.6%</td>
+    </tr>
+    
+  </table>
+
+  <div class="grid">
+    <div>
+      <h2>Move Comparison</h2>
+      <img src="data:image/png;base64,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srU/8sgjkqTVq1fnOda6deuUlZWlNm3aqGLFinZtXl5e6tatm65evaq1a9fatX344YeSpBEjRhT0NAAAQBHlkXeXoueXX36RJN19990O263bY2NjTRlrwYIFdmP98ccfOnjwoKpVq6agoCBt2bJFq1atUnJysmrUqKHevXurdu3aN3VOAACg6CiWAevo0aOSpGrVqjlst25PTEx0yli//fabJKlKlSoaNmyY5s+fb7fPhAkT9MYbb+i5557L8/gAAKDocVnASk9P19atWxUdHa09e/bo9OnTOn/+vMqUKaPAwEDdddddatu2re655x55enre0rGsyx/kNMepVKlSkqSLFy86Zaxz585Jknbt2qUdO3ZoypQpevLJJ+Xh4aHPPvtML7/8sp5//nmFhoaqa9eu+TqnBg0aONyekJCgWrVq5WsMAADgGk4PWPv379d7772nRYsW6dy5czIMw2G/lStXymKxqEyZMnr88cf19NNP64477nB2eU6RlZUlScrMzNS//vUvTZ482dY2duxYJSUladq0aXrttdfyHbAAAEDR4bSAdezYMU2YMEGLFi1SVlaWqlevrq5du6p58+YKDQ1V2bJlVbp0aSUnJ+vcuXPat2+ftm/frujoaM2ePVvvvPOOBg4cqIiIiBzfnsuJ9VODKSkpDtsvX74sSfLz83PKWNd/anHw4MHZ9hk8eLCmTZummJgYpaamytvbO8864uLiHG7P6c4WAAAoPE4LWHXr1pUkDR06VOHh4WrdunWu/Tt06GD7/59++kmff/65Pv/8c3399dc3veJ59erVJV0LeY5YtwcHBztlrOv/PyQkJNs+1m1Xr17V2bNnVaVKlTzrAAAARYfTlml45plndOjQIb377rt5hqsb3XvvvXr//feVkJCgoUOH3vSxGzduLOnaHChHrNsbNWrklLFCQ0Ntd6Ws87Gud/3K79ff7QIAAMWD0wLW22+/rUqVKt3SGJUrV9bbb7990/u1bt1a/v7+SkhI0J49e7K1L126VJLUrVu3PMfq1KmT3NzctHnz5myLiaalpWn16tVyd3dXly5dbNu9vLz04IMPSpI2bdqUbczo6GhJUs2aNVW6dOn8nhYAACgiiuVCo56enho+fLgkadiwYbZ5UpI0c+ZMxcbGqm3btmrSpIlt+9y5cxUaGqrx48fbjVW5cmX1799f6enpevbZZ5WZmWlrGzt2rE6fPq3w8HBVqFDBbr+xY8dKkiIiInTgwAHb9sOHD2vixImSpH/+858mnTEAALiduCxgubu768knn8yz39ChQ+0eR1NQEyZMUIsWLbR161bVqVNH/fr1U8uWLfXcc88pMDBQCxYssOuflJSk+Ph4nTx5MttYs2bNUq1atRQVFaXQ0FA9+uijuvPOOzVnzhzVqVNHM2fOzLbPPffco0mTJunYsWMKCwtTx44d1blzZzVu3FiHDh1S586dHT7DEAAAFH0uC1iGYeS4RIOjvrfK29tbGzdu1MSJE+Xj46MVK1YoMTFRgwYN0q5du1SzZs18j1W+fHlt375dI0aMUHp6upYvX67k5GSNHDlS27dvz/Ghza+88oqioqLUpEkTbdu2TdHR0apVq5befvttrVq1Su7u7rd8ngAA4PZjMcxIM/ng5uamQYMGZbtzdKO+ffvqm2++yXFZBNizLtOQ0zIOBRUybo2p4wG3syNvFN316LhW8XfhjOvUWb9DJScvNGp9zIzVpUuXsm2zyszMVHx8vNavX8/K5AAAoEhzasAKCQmRxWKx/TkqKkpRUVG57mMYRoGWZgAAALhdODVg3XfffbaAFR0drQoVKig0NNRhX09PT1WpUkUPP/ywevbs6cyyAAAAnMqpAev6NaDc3NzUuXPnPOdgAQAAFHVOf9iz1eHDh1m1HAAA/C24bJmGoKAglShRQhkZGTn2ycjI0IULF5SVleWqsgAAAEznsoD19ttvKyAgwPaYGEeio6MVEBCgd955x1VlAQAAmM5lAWv58uUKCgrS/fffn2Of+++/X9WqVcvzk4YAAAC3M5cFrN9//922oFduGjZsqN9//90FFQEAADiHywJWcnKy/P398+zn7++vc+fOuaAiAAAA53BZwKpcubJiY2Pz7BcbG6sKFSq4oCIAAADncFnAat++vfbt26fIyMgc+3z11Vf67bff9I9//MNVZQEAAJjOZQHrhRdekKenpx5//HENHz5csbGxunz5si5fvqzY2FgNHz5cAwcOlKenp1544QVXlQUAAGA6ly00Ghoaqs8++0xPPPGE3n33Xb377rt27YZhyNvbWwsXLlTDhg1dVRYAAIDpXHYHS5L69Omj2NhYPfPMM6pdu7a8vLzk5eWl2rVr61//+pd++eUX9evXz5UlAQAAmM5ld7Csateurfnz57v6sAAAAC7j0jtYAAAAfwcuv4OVlpamqKgobd68WSdOnJAkValSRffee6969+4tb29vV5cEAABgKpcGrA0bNmjQoEE6efKkDMOwa/vggw80duxYffLJJ3rggQdcWRYAAICpXBawYmJi9NBDDyk9PV0tWrRQ//79FRISIklKTEzUl19+qW3btqlbt26Kjo5WixYtXFUaAACAqVwWsCZOnKiMjAy9++67euaZZ7K1jxgxQh988IH++c9/atKkSfr2229dVRoAAICpXDbJPSYmRk2bNnUYrqyefvppNWvWTNu2bXNVWQAAAKZzWcByc3NT7dq18+xXu3ZtWSwWF1QEAADgHC4LWM2bN8/3w56bN2/ugooAAACcw2UBKyIiQr///rsmT56srKysbO2GYWjy5Mn6/fffFRER4aqyAAAATOeySe779+/XE088oalTp+rzzz9X7969FRwcLOnapwiXLVumI0eOaOjQoYqPj1d8fLzd/o8//rirSgUAALglFuPGBamcxM3NTRaLxW79K+tcK0fbrAzDkMVi0dWrV11RZpHToEEDSVJcXJyp44aMW2PqeMDt7MgbXQu7hALjWsXfhTOuU2f9DpVceAdr0qRJTF4HAAB/Cy4LWFOmTHHVoQAAAAoVD3sGAAAwGQELAADAZE4LWP369dO+fftuaYy4uDj17dvXpIoAAABcw2kBa8OGDbrzzjvVq1cvrVixQunp6fnaLz09XVFRUerevbsaN26sjRs3OqtEAAAAp3DaJPdDhw5p6tSpmjt3rlauXCk/Pz+1bNlSzZo1U7169RQQECA/Pz9dvHhRZ8+eVXx8vP773/8qJiZGFy9elJeXl5577jm99NJLzioRAADAKZwWsPz9/TVt2jQ999xz+vjjj/Xxxx9r/fr1Wr9+vcPlGqxrYdWoUUMvvviihgwZoooVKzqrPAAAAKdx+jINlSpV0ssvv6yXX35Zv/32mzZv3qzY2FidOnVKycnJ8vf3V4UKFdS4cWO1adNGd9xxh7NLAgAAcCqXrYMlSfXr11f9+vVdeUgAAACXY5kGAAAAkxGwAAAATEbAAgAAMBkBCwAAwGQELAAAAJMRsAAAAExGwAIAADAZAQsAAMBkLl1oVJLOnDmjRYsWafv27UpKSlKHDh00duxYSVJcXJwSEhJ0//33y8fHx9WlAQAAmMKlAevrr7/WU089pUuXLskwDFksFlWtWtXWfvz4cfXs2VOffvqpwsPDXVkaAACAaVz2FuHPP/+sxx57TB4eHpoxY4a2b99ue8CzVYcOHeTv769ly5a5qiwAAADTuewO1muvvSY3Nzd99913uvvuux32cXd319133629e/e6qiwAAADTuewO1tatW9WqVascw5VVpUqVdPLkSRdVBQAAYD6XBayUlBQFBgbm2e/cuXMuqAYAAMB5XBawqlatqri4uFz7GIahvXv3qkaNGi6qCgAAwHwuC1idOnVSfHy8lixZkmOfjz76SH/88Ye6du3qqrIAAABM57JJ7uPGjdPixYv1+OOPa/fu3erZs6ck6fLly9q9e7eWL1+ut956S4GBgfr3v//tqrIAAABM57I7WNWqVdOaNWtUvnx5TZs2Ta1bt5bFYtHSpUvVtGlTTZ06VWXKlNGqVatUoUIFV5UFAABgOpcuNNqqVSvFx8fr448/1nfffacjR44oKytL1apV0wMPPKBnnnlG/v7+riwJAADAdC5/FqGfn59Gjx6tNWvWKC4uTvv27dN3332nsWPHmh6urly5okmTJqlu3bry9vZWlSpVNGTIEB0/fvymxzp37pxGjRql4OBgeXl5KTg4WKNHj9b58+fztX96errq168vi8UiDw+XP6EIAAC4kMsClqsXD01NTVX79u0VERGhS5cuqXv37goKCtLChQsVFhamQ4cO5XuspKQkNW/eXHPmzJGHh4d69OghPz8/zZ49Wy1atNDZs2fzHOO1117T/v37b+WUAABAEeGygNWoUSOFhYVp+vTpBbqDdLOmTp2qbdu2qVWrVjpw4IAiIyMVExOjGTNm6PTp0xoyZEi+xxo9erQOHjyoXr16KT4+XpGRkdq7d69GjBihAwcOaMyYMbnuv2/fPr3++usaOnTorZ4WAAAoAizGjQ8EdJImTZpo9+7dslgsslgsatu2rQYMGKDevXub/tZgenq6KlSooOTkZO3atUthYWF27Y0bN1ZsbKx27NihJk2a5DrWyZMnVa1aNXl4eOjo0aOqWLGirS0tLU1BQUE6e/asTpw44XByvmEYuu+++3TgwAHt379fZcuWlbu7uzIzM0051wYNGkhSnmuM3ayQcWtMHQ+4nR15o+guDcO1ir8LZ1ynzvodKrnwDtbOnTu1b98+vfTSSwoODtbGjRs1dOhQVa5cWX36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4eHhOd7Ru/EON24vvEUIFCGVK1dWaGiofHx8CrsU4Lbj7++v0NDQQg9YN7rrrrtsz6ddsWJFnv0vXLig1atXS5IGDhzozNLgRAQs4DpHjhyRxWJRu3btdPnyZY0ZM0ZBQUEqWbKk7r77bttfepL09ddfq0WLFipVqpQqVqyokSNH6sqVK9nGtM6XMAxDs2fPVv369eXt7a2qVatq5MiROn/+fL7ry20OVkpKil5//XWFhYXJ19dXvr6+atmypT799NMcx9uyZYvuv/9++fn5qUyZMnrwwQcVExOT73qA20lOc7DS09M1f/58NWvWTOXKlZOPj49CQkL00EMPacmSJZL+d+1HR0dLkmrUqGE3r+lWhYWFSZL++OOPPPtGRUXpypUratasmerVq3fLx0bh4C1CwIH09HR16NBBhw8f1n333aekpCT9+OOP6tmzp9atW6dff/1VY8eOVdu2bfXggw/qxx9/1DvvvKMzZ87oiy++cDjmiBEj9MEHH6hdu3a68847FR0drXfeeUfR0dHavHmzSpcuXeB6T506pQceeECxsbGqVKmS2rZtK8MwtHXrVg0aNEg7duzQO++8Y7fPN998o549eyozM1PNmzdXzZo19csvv+i+++7LNnkYKMoGDBigpUuXys/PT23atFHp0qV1/Phx/fTTT7p06ZIeffRR+fr66oknntC6dev0119/2eZRmeXixYuSJC8vrzz7Llq0SJIUHh6ea79p06YpISFBXl5eatCggXr27KnAwMBbLxbmMIC/KUnGjZfA4cOHbdvbt29vXLp0yda2cOFCQ5JRu3ZtIyAgwPjvf/9razt+/LhRoUIFQ5KRkJBgN2ZwcLAhyShdurSxY8cO2/aLFy8a7du3NyQZo0aNsttn8uTJhiRj4cKFdtufeOIJQ5KxceNGu+1dunSxjZOammrb/ueffxpNmzY1JBn/93//Z9t+4cIFIzAw0JBkLFiwwLY9KyvLePHFF23fg8mTJ+f6PQTM5ui6vJH1WnziiSccbr/+dXvo0CFDkhEcHGwkJSXZ9b9y5YqxdetWu21t27Y1JBmHDx++6dqt17qjfR999FFDkjFgwIBcxzh27Jjh5uZmeHh4GH/99Veux7nxy8fHx/j4449vum44B28RAg64ubnp3XffValSpWzbHn/8cZUvX14HDx7UsGHD1LRpU1tblSpVNGDA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" alt="move plot" style="max-width: 100%;" />
+    </div>
+    <div>
+      <h2>Top Strategy P&L</h2>
+      <img src="data:image/png;base64,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hYSE5NumUqVKSklJsYK7s09B/SpVqiRJOn36dKH35a5Pfpw3QfzVvn37FBsbe9H+AAAAsAePBveDBw/mu87f31+1a9dW586d9eijj6pp06bF3s+hQ4f0+OOPq3Pnzho2bFixtwMAAACUFR4N7rm5uR7Zz6hRo3Tu3Dm9+eabhe4TGhoqSTp79my+bdLS0iRJYWFhLn2c/cLDwy/apzD7ctcnP/k9bii/mXgAAADYU5m6xr2kfPnll4qMjNR9993nstz5ZJfff//deq76p59+qho1aqhOnTqSzr/N1J20tDSlpKQoKirKCtTh4eGKiIjQqVOndOTIEbf/S+DcXkxMjLWsTp06+vnnn/Pdl7s+AACUJJ7NDtiP14N7cnKyJCkqKqpEt5uSkqIffvjB7bqMjAxrnTPMN27cWIGBgUpMTNTvv/+uyy67zKXP5s2bJcm6wdSpVatWWrlypTZv3pwnuGdlZWnHjh0KCgpSo0aNXPosWrTI2uZf5bcvAAAAVFxeeRzk119/reuvv16hoaGqUqWKqlSpotDQUPXq1Utff/31JW/fGOP268CBA5Kk2NhYa1ndunUlScHBwerataskad68eXm2OX/+fEnnn71+od69e7usv9CXX36pjIwMde/eXUFBQXn6LF68WJmZmS59jh07plWrVikqKkodO3YszuEDAACgHPJ4cH/wwQfVt29fLVmyxLouPCIiQmfPntV3332nvn37avz48Z4uS5Ks/U6ePFl79+61lq9du1ZvvfWWIiMjdffdd7v0ueeeexQeHq5Fixbps88+s5YfP35cEyZMkCQ99NBDLn3atWunjh076vjx43r00Uet5dnZ2Ro5cqSysrI0ZsyYAl8YBQAAgIrFo8F9zpw5mjFjhqpWrapXXnlFycnJSk5O1smTJ5WSkqJXX31V1apV04wZMzR37lxPliZJ6t69u8aOHasTJ06odevWuummm3TjjTfq2muvVXZ2tmbOnKnIyEiXPtHR0Xr//ffl4+Oj+Ph4de3aVQMHDlTjxo3122+/afz48db19BdyPqZyxowZatmypYYMGaLGjRvrs88+U4cOHfTYY4955qABAABgCx4N7v/5z38UFBSklStXavTo0YqIiLDWhYeHa9SoUfrhhx8UGBio//znP54szTJ9+nTNnDlTTZo00ZIlS7R27Vp1795dK1eu1E033eS2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Zs6cqcjISJf+0dHRev/99zVo0CDFx8erS5cuqly5spYuXaqUlBSNHz9eXbp0ybPfmTNnqn379poxY4a+//57NW3aVBs2bND+/fvVoUMHPfbYYyU6HgAAALC/chnck5OTre+dAd6dp556ygrukjR9+nS1bt1ar732mpYsWaKAgAB1795dTzzxhDp06OB2G7fccotWrlypyZMna926dTp37pyaNm2q0aNHa+jQoW77NGzYUD///LOefPJJffPNN1q4cKHq1KmjJ554Qv/617+sF0MBAAAATg5jjPF2ESh5zsdB5ve4SACA97QeN9HbJQAes2X6094uwWNKO3+Vy2vcAQAAgPKG4A4AAADYAMEdAAAAsIFyeXMqAACexnXrAEobwR0AAAClpigfaivSjazFwaUyAAAAgA0Q3AEAAAAbILgDAAAANkBwBwAAAGyA4A4AAADYAMEdAAAAsAGCOwAAAGADBHcAAADABgjuAAAAgA0Q3AEAAAAbILgDAAAANuDn7QIAACiLWo+b6O0SAMAFM+4AAACADRDcAQAAABsguAMAAAA2QHAHAAAAbIDgDgAAANgAwR0AAACwAYI7AAAAYAMEdwAAAMAGCO4AAACADRDcAQAAABvw83YBAAB4SutxE71dAgAUGzPuAAAAgA0Q3AEAAAAbILgDAAAANkBwBwAAAGyA4A4AAADYAMEdAAAAsAGCOwAAAGADPMcdAGBrPJsdQEXBjDsAAABgA8y4AwAAoEwoyv+gbZn+dClWUjYx4w4AAADYAMEdAAAAsAGCOwAAAGADBHcAAADABgjuAAAAgA3wVBkAQJnDs9kBIC9m3AEAAAAbILgDAAAANkBwBwAAAGyA4A4AAADYAMEdAAAAsAGeKgMA8AieFAMAl4YZdwAAAMAGCO4AAACADRDcAQAAABsguAMAAAA2wM2pAIBi44ZTAPAcZtwBAAAAG2DGHQDggll0ACibCO4AAACwnaJMMmyZ/nQpVuI5XCrjRenp6XryySfVqFEjBQUFqWbNmhoxYoR+//13b5cGAACAMoYZdy/JyMhQ165dtW7dOv3tb39T//79dfDgQc2cOVNffvml1q1bp/r163u7TADlBJe/AID9MePuJZMnT9a6devUvn177dmzR3PmzNFPP/2kl19+WYmJiRoxYoS3SwQAAEAZ4jDGGG8XUdGcO3dO1apV06lTp7R582a1adPGZX2rVq20bds2bdy4UVdccUWx9tGsWTNJ0s6dOy+5XgBlE7PoAFA4nrrGvbTzF5fKeMGaNWt06tQpxcbG5gntkhQfH69t27Zp8eLFxQ7uAOyJMA4AyA+XynjB1q1bJUlxcXFu1zuXb9u2zWM1AQAAoGxjxt0LDh06JEmqVauW2/XO5QkJCR6rCQCz3QCAso3g7gVnzpyRJIWEhLhdX6lSJUnS6dOnL7ot57VUf/Xrr7/K398/3/Wwn31HE71dAgAAttRsyXyP7Gffvn3y9/cvte0T3Msph8NR4Imzb98+SVJsbKynSip3PD2GsTWqemQ/nsa5WDIYx5LBOJYMxvHSMYYlwzmOkmf+DfX397cmYEsDwd0LQkNDJUlnz551uz4tLU2SFBYWdtFtFfeuZZ46c+kYw5LBOJYMxrFkMI4lg3G8dIxhyShv48jNqV5Qp04dSdKRI0fcrncuj4mJ8VhNAAAAKNsI7l7QqlUrSdLmzZvdrncub9mypcdqAgAAQNlGcPeCjh07KiIiQvv27dOWLVvyrJ8///wNFH379vVwZQAAACirCO5eEBAQoNGjR0uSRo0aZV3TLklTp07Vtm3b1LlzZ16+BAAAAAs3p3rJ448/rqVLl+rHH39Uw4YN1alTJyUkJOinn35S1apV9f7773u7RAAAAJQhDmOM8XYRFVV6erqef/55ffzxxzp8+LCio6PVq1cvPfPMM/m+nAkAAAAVE8EdAAAAsAGucQcAAABsgOAOAAAA2ADBHQAAALABgjsAAABgAwR3AAAAwAYI7uXQhg0bNGjQINWsWVP+/v6KjIxUp06dNHPmTLl7iFBOTo6mTZumFi1aKDg4WFWrVtWgQYO0a9cuL1RfdhRlHHfv3q1p06bp1ltvVWxsrBwOhxwOhw4ePOid4suIwo5hVlaWvvvuO40ePVrNmzdXSEiIgoOD1aRJEz388MNKTEz04lF4X1HOxVmzZmnIkCFq0qSJoqOjFRAQoJo1ayo+Pl5r1qzx0hGUDUX9u/FC586dU9OmTeVwOOTnV7FfgVKUcRw2bJj196G7rzfffNNLR+FdxTkXz5w5o6efflotW7ZUaGioIiIi1Lx5c40aNUpnzpzx8BGUDYUdx4MHDxZ4Hjq/RowY4cWjKSSDcmX+/PnG19fXSDJxcXFm0KBB5rrrrjN+fn5Gkrnttttc2ufk5JgBAwYYSSYyMtLccsstpnPnzsbhcJiQkBDz008/eelIvKuo4zh27FgjKc/XgQMHvHMAZUBRxnDJkiXWmNWtW9fcfPPNpm/fvqZKlSpGkqlRo4b59ddfvXg03lPUc/GKK64wfn5+pk2bNqZv375m4MCBpmXLlkaScTgc5o033vDSkXhXUcfxryZOnGgcDoeRZHx9fT1UddlT1HEcOnSokWSuv/56M3To0Dxf33//vZeOxHuKcy7u37/f1KtXz0gy9evXN/Hx8aZv376mUaNGRpI5fPiwF47Eu4oyjomJiW7PP+dXUFCQkWTef/99Lx5R4RDcy5GsrCxTrVo1I8l89NFHLut++eUXEx0dbSS5/EX5zjvvGEmmYcOG5ujRo9by+fPnG0mmQYMGJisry2PHUBYUZxzfffdd8+ijj5r58+ebgwcPmsaNG1fo4F7UMVy2bJkZNGhQng+KKSkp5vrrrzeSTPv27T1Wf1lRnHNx3bp1JjU1Nc+2Fi1aZHx9fU1QUJBJTEws9drLkuKM41/bBAQEmHvvvbdCB/fijKMzuC9fvtzD1ZZNxRnDjIwM07hxY+Pr62vefPPNPNvcvn27SUtLK/Xay5JL/Z3+a3tJJjg42Jw6daq0Si4xBPdyZPv27UaSady4sdv1Y8aMMZLMCy+8YC1r0qSJkWQWLlyYp32/fv2MJDN//vzSKrlMKs44/lVFD+4lMYZOv//+uzUbf/DgwZIutUwryXE0xphu3boZSWbRokUlWWaZdynjmJuba6655hpTrVo1c/LkyQod3IszjgR3V8UZwxdeeMFIMo888oinyizzSvLvxn/9619GkhkyZEhJl1kquMa9HAkMDCxUu8qVK0uSDhw4oF27dik4OFi9e/fO0y4+Pl6StHjx4pIr0gaKOo7IqyTHsGbNmqpataok6Y8//rikuuympM9Ff39/SVJAQECxa7KjSxnHt956S6tXr9bLL7+sqKioki7NVvi78dIVZwzfeecdSdIDDzxQKjXZUUmdi8YYffzxx5KkO++885Lr8ghvf3JAycnOzjaxsbEF/tdRVFSUOXHihDHGmIULFxpJ5sorr3S7vR07dhhJpk2bNqVee1lS1HF0p6LPuJfEGDolJydb1yzu37+/tEouk0pyHJcuXWoCAgJMVFSUSU5OLqWKy6bijuMff/xhIiIiTLdu3axlqsAz7sUZR+eM+wMPPGBGjx5t7r//fvPiiy+aXbt2ebr8MqGoY3jo0CEjydSqVcsYY8zq1avNhAkTzD/+8Q/z73//2+zdu9fjx1AWlNTfjStXrjSSTLVq1WxzWTDBvZxZvXq1iYyMtG7WGDx4sHWzRsuWLc3mzZuttjNmzDCSzIABA9xuKyUlxUgy0dHRniq/zCjKOLpT0YO7MZc+hk6TJ082kkyLFi1KueKyqbjj+P7775uhQ4eawYMHm7Zt2xpJJiIiwnzzzTcePoKyoTjjePPNN5vAwECze/dua1lFDu7GFH0cncH9r18Oh8OMHDnSNmGpJBVlDL/55hsjybRr186MHDkyzzj6+fmZKVOmePFovKck/o1x3rcyZswYD1RcMgju5dDWrVtN/fr1XX65AwICzEMPPWRSUlKsds8++6yRZG6//Xa328nKyjKSjL+/v6dKL1MKO47uENzPu5QxNMaYzZs3W3f7f/311x6ouGwqzjjefffdLu2jo6PNggULPFx52VKUcfz888+NJDNx4kSX5RU9uBtTtHGcPn26efPNN82ePXvM2bNnzf79+83rr79uoqKijCQzbtw4Lx2FdxV2DD/55BMroPv4+JinnnrKHD582Pz555/mhRdesP438ssvv/Ti0XjPpfwbk5GRYZ2HGzZs8FDFl47gXs58/PHHJjAw0HTu3Nn89NNP5syZM2bPnj3Wp8q4uDiTkZFhjCG4F6Qo4+gOwf3Sx/Do0aOmbt26Ffofd2MufRxPnz5tNm7caAYNGmQkmb///e8erL7sKMo4pqammlq1aplGjRrlGduKHtwv9Xx02rFjhwkICDB+fn7m0KFDHqi87CjKGH700UdWIL3//vvzbOuRRx4xkkyHDh08fRhed6nn4oIFC4wkc/nll3uw6ktHcC9H9uzZY/z9/c1ll11mTp8+nWd9nz59jCTzn//8xxjDpTL5Keo4ulPRg/uljmFqaqqJi4szkszAgQNNTk5OaZdcJpXEuXihivqkqKKO4+jRo40ks3Tp0jxtK3JwL+nzMT4+3kgyM2fOLOFKy66ijuGiRYus4L5+/fo87Z2PMvT19TXp6emlXn9ZURLnovMdNs8++2xpllrieKpMOfLpp58qKytLvXr1UmhoaJ71gwYNkiStXLlSklSnTh1J0pEjR9xuz7k8JiamNMots4o6jsjrUsYwIyND/fr10+bNm9WzZ099+OGH8vGpmH9VlfS5eMcdd0iSFi1aVHJF2kBRx3Hx4sUKCgrSM888oy5durh8SeffNu3885YtWzx1GF5X0udjw4YNJUl//vlnyRVZxhV1DC/897du3bp52juX5eTk6OTJkyVfcBl1qediSkqKvv76azkcDt1+++2lWmtJq9jvbS5nnEE7IiLC7Xrn8uTkZElSq1atJEk7duxQVlaW9ag4p82bN0uSWrZsWSr1llVFHUfkVdwxzM7O1uDBg7VixQp16NBBn332WYV7dOGFSvpcrFKliiQpMTGxBKqzj+KMY0ZGhn744Yd8t+lcl5KSUkJVln0lfT4621WqVKkEqrOHoo7h5ZdfrqCgIGVkZCg5Odl6NK7ThWHdXYAtry71XJw7d64yMzN17bXX2m5ysmJOY5VTNWrUkCRt3LjR7foNGzZI+r9P6PXq1VOTJk2Unp6ur776Kk/7+fPnS5L69u1bCtWWXUUdR+RVnDE0xmj48OH64osv1Lp1a3311VcV6h90d0r6XHSGzdjY2EsvzkaKOo4HDx6UOX8paZ4vSfL19bX+7JyFrwhK8nzMzMy0/t2Ji4srmQJtoKhjGBgYqOuvv16StGLFijztnb/T9evXV3h4eAlXW3Zd6rn44YcfSrLRs9sv5LWLdFDiNm3aZF0L99frutauXWsqVapkJJklS5ZYy9955x0jyTRs2NAcO3bMWu68aaNBgwYV7nFdxRnHv6ro17gXZwydb7q7/PLLzfHjxz1dcplU1HH85ZdfzJw5c0xmZqZL29zcXPPJJ5+Y4OBg43A43F4rW56VxO+0kyrwNe5FHcddu3aZDz74IM8NgsePHzc33XSTkWRatWplcnNzPXYM3lacc3HNmjVGOv8s9wsfTbp//37riSovvviix46hLLiU3+mDBw8ah8NhgoKCCvV0s7KG4F7OPPzww9bJ3KxZMzNw4EDTsWNH4+PjYySZe++916V9Tk6OdYNGVFSUiY+PN126dDEOh8MEBwebdevWeelIvKuo47hp0yZz1VVXWV/ORxi2bt3aWvbOO+946Wi8oyhj6Hz0niTTo0cPM3ToULdfFfGlLUUZx+XLlxvp/PPau3btam677TZz4403Wk/n8fHxMdOmTfPewXhRUX+n81ORg7sxxTsfo6KiTI8ePcxtt91munTpYsLCwtwG0YqiOOfik08+aSSZkJAQ06NHD9OrVy9rHG+44QaTnZ3thSPxruL+TjufqDdw4EAPV1wyCO7l0GeffWZ69uxpKleubPz8/ExUVJS57rrrzMcff+y2fXZ2tnn55ZdNs2bNTFBQkKlcubKJj483O3fu9HDlZUtRxtH5D1RBX399HnRFUNgxnDlz5kXHT5JZvny5dw7Eywo7jsePHzeTJk0yXbt2NbVq1TKBgYEmODjYNGzY0IwYMcJs2rTJS0dQNhT170Z3KnpwN6bw4/j777+bcePGmauvvtrUqFHD+Pv7m9DQUBMXF2cmTpxoTp486aUj8L7inIsLFiwwnTp1MmFhYSY4ONi0bt3aTJs2rcL9r/iFijOOTZs2NZLMokWLPFhpyXEY8/8v2gMAAABQZnFzKgAAAGADBHcAAADABgjuAAAAgA0Q3AEAAAAbILgDAAAANkBwBwAAAGyA4A4AAADYAMEdAAAAsAGCOwAAAGADBHcAAADABgjuAAAAgA0Q3AEAAAAbILgDAEqMw+Fw+fLx8VFkZKQ6deqkd999V8YYt/2MMXrllVfUrFkzBQYGqlq1arrmmmv0wgsvKD09Pd/9HTx4UA6HQ3Xr1i2lIwKAssNh8vtbFACAInI4HJKkoUOHSpJycnK0b98+rVu3TsYYDRkyRJ988kmefmPGjNGrr76q4OBgdevWTX5+flq9erWSkpJ04MCBfIP5wYMHVa9ePcXExOjgwYOldVgAUCYQ3AEAJcYZ3P/6T8uSJUt04403Kjs7W4sXL1afPn2sdQcPHlRsbKzCwsK0YcMGNWzYUJKUlZWlDz/8UH369FHVqlXd7o/gDqAi4VIZAECp69Gjh+68805J0ueff+6ybsOGDcrNzVXPnj2t0C5J/v7+Gj58eL6hHQAqGoI7AMAj2rRpI0k6fPiwy3I/Pz9JUkJCgsdrAgA7IbgDADzi9OnTkqTAwECX5Z07d1ZoaKjWr1+v9957zxulAYAtENwBAKXOGKMvv/xSktSyZUuXddHR0br33nslSffff7+WLl3q8foAwA4I7gCAUpOTk6O9e/dqxIgRWrt2rQIDAzV8+HCXNosWLdJbb72la6+9Vjk5Obrpppv0008/ealiACi7CO4AgBLnfI67n5+fGjVqpFmzZiksLEyffPKJYmNjrXYbNmzQ4MGD1aFDB33//fd64403lJaWphtvvFE7duxw2eZzzz0nh8Ohd955x9OHAwBlgp+3CwAAlD/O57j7+PgoPDxcLVq00M0336yoqCiXdhMmTFBmZqamT58uX19f3XvvvTpz5oweeugh9ezZU6tXr1b9+vUlSbt27ZIktW/f3rMHAwBlBM9xBwCUmPye4+5Oenq6KlWqpGrVquno0aMu6yZNmqSJEyeqfv36Wr16tcLDw1WrVi3FxMRoy5YtVjue4w6gImHGHQDgFampqTLGKCcnJ8+6J598UqdPn9aUKVPUs2dPdenSRSkpKZo9e7YXKgWAsoHgDgDwiqpVq6pq1apKTEzUypUrde2117qsf+mll3TmzBm9+eab2rFjhwYPHqx+/fp5qVoA8D5uTgUAeIWPj49GjRolSbrjjju0atUql/Xp6emqWbOm9edffvlFycnJHq0RAMoSrnEHAJSYolzjLknZ2dm67bbbNG/ePEnn367asGFDnTlzRj/++KNSUlJ0ww03qEqVKvrvf/+rDh06aMmSJQoJCZH0f9e4BwQEWG9mdeeJJ55Q7969L/HoAMC7uFQGAOA1fn5+mjt3rubOnav33ntPGzdu1Pbt21WlShVdd911uvvuu9W7d29lZWXp0KFD+uGHH3TLLbfoiy++kL+/v7Wdc+fOFfjs98TERE8cDgCUKmbcAQAAABvgGncAAADABgjuAAAAgA0Q3AEAAAAbILgDAAAANkBwBwAAAGyA4A4AAADYAMEdAAAAsAGCOwAAAGADBHcAAADABgjuAAAAgA0Q3AEAAAAbILgDAAAANkBwBwAAAGyA4A4AAADYAMEdAAAAsAGCOwAAAGADBHcAAADABgjuAAAAgA0Q3AEAAAAbILgDAAAANkBwBwAAAGyA4A4AAADYAMEdAAAAsAGCOwAAAGADBHcAAADABgjuAAAAgA0Q3AEAAAAb+H/3gcWfBQyY7AAAAABJRU5ErkJggg==" alt="pnl plot" style="max-width: 100%;" />
+    </div>
+  </div>
+
+  <h2>Strategy Rankings</h2>
+  <table>
+    <tr>
+      <th>Rank</th>
+      <th>Strategy</th>
+      <th>Score</th>
+      <th>EV</th>
+      <th>CVaR</th>
+      <th>Convexity</th>
+      <th>Capital Ratio</th>
+      <th>Alignment</th>
+      <th>Risk</th>
+    </tr>
+    
+    <tr>
+      <td>1</td>
+      <td>CALENDAR</td>
+      <td>0.9924</td>
+      <td>$85.46</td>
+      <td>$83.68</td>
+      <td>1.0300</td>
+      <td>0.0707</td>
+      <td>0.50</td>
+      <td>defined_risk</td>
+    </tr>
+    
+    <tr>
+      <td>2</td>
+      <td>IRON_CONDOR</td>
+      <td>0.9177</td>
+      <td>$55.35</td>
+      <td>$52.55</td>
+      <td>1.0824</td>
+      <td>0.0421</td>
+      <td>0.50</td>
+      <td>defined_risk</td>
+    </tr>
+    
+    <tr>
+      <td>3</td>
+      <td>CALL_SPREAD</td>
+      <td>0.4858</td>
+      <td>$-42.97</td>
+      <td>$-62.52</td>
+      <td>-0.4357</td>
+      <td>0.0764</td>
+      <td>0.50</td>
+      <td>undefined_risk</td>
+    </tr>
+    
+    <tr>
+      <td>4</td>
+      <td>PUT_SPREAD</td>
+      <td>0.4477</td>
+      <td>$-53.18</td>
+      <td>$-72.92</td>
+      <td>-0.5152</td>
+      <td>0.0869</td>
+      <td>0.50</td>
+      <td>undefined_risk</td>
+    </tr>
+    
+    <tr>
+      <td>5</td>
+      <td>LONG_PUT</td>
+      <td>0.2873</td>
+      <td>$-151.28</td>
+      <td>$-178.86</td>
+      <td>-0.7269</td>
+      <td>0.1886</td>
+      <td>0.50</td>
+      <td>defined_risk</td>
+    </tr>
+    
+    <tr>
+      <td>6</td>
+      <td>LONG_CALL</td>
+      <td>0.2681</td>
+      <td>$-163.44</td>
+      <td>$-193.29</td>
+      <td>-0.7256</td>
+      <td>0.2020</td>
+      <td>0.50</td>
+      <td>defined_risk</td>
+    </tr>
+    
+    <tr>
+      <td>7</td>
+      <td>LONG_STRANGLE</td>
+      <td>0.1593</td>
+      <td>$-220.57</td>
+      <td>$-222.48</td>
+      <td>-0.9803</td>
+      <td>0.1963</td>
+      <td>0.50</td>
+      <td>defined_risk</td>
+    </tr>
+    
+    <tr>
+      <td>8</td>
+      <td>LONG_STRADDLE</td>
+      <td>0.0000</td>
+      <td>$-314.72</td>
+      <td>$-316.09</td>
+      <td>-0.9870</td>
+      <td>0.2785</td>
+      <td>0.50</td>
+      <td>defined_risk</td>
+    </tr>
+    
+  </table>
+
+  
+  <h3>Conditional Strategies — Not Evaluated</h3>
+  <p style="color: #718096; font-size: 0.9em;">
+    The following strategies have entry-condition gates and were
+    not activated for this market snapshot.
+  </p>
+  
+  <div class="not-applicable">
+    <strong>CALL_BACKSPREAD</strong>
+    <small> — IV ratio 1.00 < 1.4 required; implied move 0.086 > P75×0.9 (overpriced)</small>
+  </div>
+  
+  <div class="not-applicable">
+    <strong>PUT_BACKSPREAD</strong>
+    <small> — IV ratio 1.00 < 1.4 required; implied move 0.086 > P75×0.9 (overpriced)</small>
+  </div>
+  
+  <div class="not-applicable">
+    <strong>POST_EVENT_CALENDAR</strong>
+    <small> — Entry requires 1–3 days after earnings event (currently pre-event)</small>
+  </div>
+  
+  
+
+  
+
+  <h2>Strategy Trade Sheets</h2>
+
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 1 — CALENDAR
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.9924
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Long time-value, short event vol. Sells near-term vol (expensive pre-earnings) and buys post-event vol (relatively cheaper). Profits from front vol crush after earnings while retaining back-month optionality. Defined risk = net debit.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>SELL</strong></td>
+        <td>CALL</td>
+        <td>$130.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>0.529</td>
+        <td>0.02794</td>
+        <td>10.30</td>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>CALL</td>
+        <td>$130.00</td>
+        <td>2026-04-09</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>0.549</td>
+        <td>0.01632</td>
+        <td>17.46</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>0.0203</td>
+        <td>-0.011613</td>
+        <td>7.15</td>
+        <td>0.08</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$80.25</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$80.25</td>
+        <th>Capital Efficiency</th>
+        <td>0.0707</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #38a169; font-weight: bold;">
+          $85.46
+        </td>
+        
+        <td style="color: #38a169; font-weight: bold;">
+          $136.57
+        </td>
+        
+        <td style="color: #38a169; font-weight: bold;">
+          $89.96
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 2 — IRON_CONDOR
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.9177
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Short-vol structure. Collects premium by selling OTM strangles and buying wings for protection. Profits when the stock stays inside the break-even range. Best when vol is expensive relative to expected move and a muted earnings reaction is likely.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>SELL</strong></td>
+        <td>CALL</td>
+        <td>$140.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>0.273</td>
+        <td>0.02336</td>
+        <td>8.61</td>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>CALL</td>
+        <td>$145.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>0.178</td>
+        <td>0.01828</td>
+        <td>6.74</td>
+      </tr>
+      
+      <tr>
+        <td><strong>SELL</strong></td>
+        <td>PUT</td>
+        <td>$120.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>-0.210</td>
+        <td>0.02030</td>
+        <td>7.47</td>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>PUT</td>
+        <td>$117.50</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>-0.159</td>
+        <td>0.01707</td>
+        <td>6.28</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>-0.0440</td>
+        <td>-0.008311</td>
+        <td>-3.06</td>
+        <td>0.06</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$47.76</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$47.76</td>
+        <th>Capital Efficiency</th>
+        <td>0.0421</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #38a169; font-weight: bold;">
+          $55.35
+        </td>
+        
+        <td style="color: #38a169; font-weight: bold;">
+          $116.90
+        </td>
+        
+        <td style="color: #38a169; font-weight: bold;">
+          $38.93
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 3 — CALL_SPREAD
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.4858
+        
+          &nbsp;(10% undefined-risk penalty applied)
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Debit spread with capped upside. Reduces premium outlay vs a naked call while maintaining a bullish directional view. Best in mildly-to-moderately bullish scenarios with moderate vol.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>CALL</td>
+        <td>$130.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>0.529</td>
+        <td>0.02794</td>
+        <td>10.30</td>
+      </tr>
+      
+      <tr>
+        <td><strong>SELL</strong></td>
+        <td>CALL</td>
+        <td>$140.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>0.273</td>
+        <td>0.02336</td>
+        <td>8.61</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>0.2562</td>
+        <td>0.004579</td>
+        <td>1.70</td>
+        <td>-0.04</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$-86.65</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$86.65</td>
+        <th>Capital Efficiency</th>
+        <td>0.0764</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-42.97
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-108.96
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-30.60
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 4 — PUT_SPREAD
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.4477
+        
+          &nbsp;(10% undefined-risk penalty applied)
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Debit spread with capped downside. Reduces premium outlay vs a naked put while maintaining a bearish directional view. Best in mildly-to-moderately bearish scenarios.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>PUT</td>
+        <td>$130.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>-0.471</td>
+        <td>0.02794</td>
+        <td>10.30</td>
+      </tr>
+      
+      <tr>
+        <td><strong>SELL</strong></td>
+        <td>PUT</td>
+        <td>$120.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>-0.210</td>
+        <td>0.02030</td>
+        <td>7.47</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>-0.2605</td>
+        <td>0.007631</td>
+        <td>2.83</td>
+        <td>-0.05</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$-98.66</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$98.66</td>
+        <th>Capital Efficiency</th>
+        <td>0.0869</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-53.18
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-134.42
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-36.42
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 5 — LONG_PUT
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.2873
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Directional bet on a downside move. Profits when the stock drops below strike − premium paid. Maximum loss = premium. Best when implied vol is cheap and a sharp decline is expected.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>PUT</td>
+        <td>$130.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>-0.471</td>
+        <td>0.02794</td>
+        <td>10.30</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>-0.4710</td>
+        <td>0.027935</td>
+        <td>10.30</td>
+        <td>-0.19</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$-214.04</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$214.04</td>
+        <th>Capital Efficiency</th>
+        <td>0.1886</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-151.28
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-291.66
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-111.17
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 6 — LONG_CALL
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.2681
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Directional bet on an upside move. Profits when the stock rallies beyond strike + premium paid. Maximum loss = premium. Best when implied vol is cheap relative to the expected earnings move.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>CALL</td>
+        <td>$130.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>0.529</td>
+        <td>0.02794</td>
+        <td>10.30</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>0.5290</td>
+        <td>0.027935</td>
+        <td>10.30</td>
+        <td>-0.20</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$-229.22</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$229.22</td>
+        <th>Capital Efficiency</th>
+        <td>0.2020</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-163.44
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-303.82
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-123.33
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 7 — LONG_STRANGLE
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.1593
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Lower-cost long-vol bet using OTM options. Wider break-evens than a straddle but cheaper entry. Best when a very large move is expected but direction is uncertain.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>CALL</td>
+        <td>$140.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>0.273</td>
+        <td>0.02336</td>
+        <td>8.61</td>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>PUT</td>
+        <td>$120.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>54.9%</td>
+        <td>-0.210</td>
+        <td>0.02030</td>
+        <td>7.47</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>0.0624</td>
+        <td>0.043660</td>
+        <td>16.08</td>
+        <td>-0.31</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$-222.76</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$222.76</td>
+        <th>Capital Efficiency</th>
+        <td>0.1963</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-220.57
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-354.09
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-169.48
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank 8 — LONG_STRADDLE
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: 0.0000
+        
+      </span>
+    </div>
+
+    
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">Pure long-volatility bet. Profits from a large move in either direction; break-evens at strike ± total premium. Best when implied move underprices the expected earnings reaction, regardless of direction.</div>
+    </details>
+    
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th>
+        <th>Type</th>
+        <th>Strike</th>
+        <th>Expiry</th>
+        <th>Qty</th>
+        <th>Entry $</th>
+        <th>IV</th>
+        <th>Δ</th>
+        <th>Γ</th>
+        <th>Vega</th>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>CALL</td>
+        <td>$130.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>0.529</td>
+        <td>0.02794</td>
+        <td>10.30</td>
+      </tr>
+      
+      <tr>
+        <td><strong>BUY</strong></td>
+        <td>PUT</td>
+        <td>$130.00</td>
+        <td>2026-03-12</td>
+        <td>1</td>
+        <td>—</td>
+        <td>55.0%</td>
+        <td>-0.471</td>
+        <td>0.02794</td>
+        <td>10.30</td>
+      </tr>
+      
+    </table>
+
+    <h4>Net Greeks at Entry</h4>
+    <table>
+      <tr>
+        <th>Net Δ</th>
+        <th>Net Γ</th>
+        <th>Net Vega</th>
+        <th>Net Θ</th>
+      </tr>
+      <tr>
+        <td>0.0580</td>
+        <td>0.055870</td>
+        <td>20.61</td>
+        <td>-0.39</td>
+      </tr>
+    </table>
+
+    <h4>Risk Boundaries</h4>
+    <table>
+      <tr>
+        <th>Max Loss</th>
+        <td style="color: #c53030;">$-316.10</td>
+        <th>Max Gain</th>
+        <td style="color: #38a169;">$0.00</td>
+      </tr>
+      
+      <tr>
+        <th>Capital Required</th>
+        <td>$316.10</td>
+        <th>Capital Efficiency</th>
+        <td>0.2785</td>
+      </tr>
+    </table>
+
+    <h4>Scenario EV Sensitivity</h4>
+    
+    <table>
+      <tr>
+        
+        <th>Base Crush</th>
+        
+        <th>Hard Crush</th>
+        
+        <th>Expansion</th>
+        
+      </tr>
+      <tr>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-314.72
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-595.48
+        </td>
+        
+        <td style="color: #c53030; font-weight: bold;">
+          $-234.50
+        </td>
+        
+      </tr>
+    </table>
+    
+
+    <h4>Regime Alignment <span style="font-size: 0.8em; color: #718096;">(Regime: Mixed / Transitional Setup, Confidence: 0.34)</span></h4>
+    
+    
+    <table style="text-align: center; width: auto;">
+      <tr>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Gamma</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Vega</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Convexity</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+        
+        
+        <td class="heatmap-cell" style="background-color: rgb(110, 100, 80); min-width: 100px;">
+          <div style="font-size: 0.9em; margin-bottom: 4px;">Tail Risk</div>
+          <div style="font-size: 1.2em;">0.50</div>
+        </td>
+        
+      </tr>
+    </table>
+    
+    <div style="margin-top: 12px;">
+      <strong>Composite Alignment:</strong> 0.50
+      &nbsp;|&nbsp;
+      <strong>Confidence-Weighted:</strong> 0.17
+    </div>
+    
+  </div>
+  
+
+  <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #718096; font-size: 0.9em; text-align: center;">
+    <p>NVDA Earnings Volatility Analysis Report | Generated by automated regime classification engine</p>
+    <p class="note">Regime classification is deterministic and fully auditable. No ML or optimization used.</p>
+  </div>
+
+</body>
+</html>
