@@ -12,6 +12,12 @@ import pandas as pd
 
 from nvda_earnings_vol import config
 from nvda_earnings_vol.alignment import compute_all_alignments
+from nvda_earnings_vol.analytics.bsm import (
+    delta as bsm_delta,
+    gamma as bsm_gamma,
+    vega as bsm_vega,
+    theta as bsm_theta,
+)
 from nvda_earnings_vol.analytics.event_vol import event_variance
 from nvda_earnings_vol.analytics.gamma import gex_summary
 from nvda_earnings_vol.analytics.historical import (
@@ -43,7 +49,16 @@ from nvda_earnings_vol.data.test_data import (
 from nvda_earnings_vol.regime import classify_regime
 from nvda_earnings_vol.reports.reporter import write_report
 from nvda_earnings_vol.simulation.monte_carlo import simulate_moves
+from nvda_earnings_vol.strategies.backspreads import (
+    build_call_backspread,
+    build_put_backspread,
+)
 from nvda_earnings_vol.strategies.payoff import strategy_pnl_vec
+from nvda_earnings_vol.strategies.post_event_calendar import (
+    build_post_event_calendar,
+    compute_post_event_calendar_scenarios,
+)
+from nvda_earnings_vol.strategies.registry import should_build_strategy
 from nvda_earnings_vol.strategies.scoring import (
     compute_metrics,
     score_strategies,
@@ -57,6 +72,196 @@ from nvda_earnings_vol.viz.plots import (
 
 
 LOGGER = logging.getLogger(__name__)
+
+STRATEGY_RATIONALE: dict[str, str] = {
+    "LONG_CALL": (
+        "Directional bet on an upside move. Profits when the stock rallies "
+        "beyond strike + premium paid. Maximum loss = premium. Best when "
+        "implied vol is cheap relative to the expected earnings move."
+    ),
+    "LONG_PUT": (
+        "Directional bet on a downside move. Profits when the stock drops "
+        "below strike − premium paid. Maximum loss = premium. Best when "
+        "implied vol is cheap and a sharp decline is expected."
+    ),
+    "LONG_STRADDLE": (
+        "Pure long-volatility bet. Profits from a large move in either "
+        "direction; break-evens at strike ± total premium. Best when "
+        "implied move underprices the expected earnings reaction, "
+        "regardless of direction."
+    ),
+    "LONG_STRANGLE": (
+        "Lower-cost long-vol bet using OTM options. Wider break-evens "
+        "than a straddle but cheaper entry. Best when a very large move "
+        "is expected but direction is uncertain."
+    ),
+    "CALL_SPREAD": (
+        "Debit spread with capped upside. Reduces premium outlay vs a "
+        "naked call while maintaining a bullish directional view. Best in "
+        "mildly-to-moderately bullish scenarios with moderate vol."
+    ),
+    "PUT_SPREAD": (
+        "Debit spread with capped downside. Reduces premium outlay vs a "
+        "naked put while maintaining a bearish directional view. Best in "
+        "mildly-to-moderately bearish scenarios."
+    ),
+    "IRON_CONDOR": (
+        "Short-vol structure. Collects premium by selling OTM strangles "
+        "and buying wings for protection. Profits when the stock stays "
+        "inside the break-even range. Best when vol is expensive relative "
+        "to expected move and a muted earnings reaction is likely."
+    ),
+    "CALENDAR": (
+        "Long time-value, short event vol. Sells near-term vol (expensive "
+        "pre-earnings) and buys post-event vol (relatively cheaper). "
+        "Profits from front vol crush after earnings while retaining "
+        "back-month optionality. Defined risk = net debit."
+    ),
+    "CALL_BACKSPREAD": (
+        "Convex upside structure: sell 1 near-ATM call, buy 2 OTM calls. "
+        "Profits asymmetrically from a large rally. Entry gate requires "
+        "significantly elevated front IV (ratio ≥ 1.40) so the short leg "
+        "funds the two longs, creating a near-zero or credit entry. "
+        "Risk: capped loss in the middle zone between the strikes."
+    ),
+    "PUT_BACKSPREAD": (
+        "Convex downside structure: sell 1 near-ATM put, buy 2 OTM puts. "
+        "Profits asymmetrically from a sharp decline. Same entry gate as "
+        "call backspread. Risk: capped loss in the middle zone between "
+        "the short and long strikes."
+    ),
+}
+
+
+def _build_chain_lookup(
+    chain: pd.DataFrame,
+) -> dict[tuple, dict[str, float]]:
+    """Build (expiry_date, option_type, strike) → {mid, iv} lookup."""
+    lookup: dict[tuple, dict[str, float]] = {}
+    for _, row in chain.iterrows():
+        key = (row["expiry"].date(), row["option_type"], float(row["strike"]))
+        lookup[key] = {
+            "mid": float(row["mid"]),
+            "iv": float(row["impliedVolatility"]),
+        }
+    return lookup
+
+
+def _enrich_legs_with_greeks(
+    legs: list[dict],
+    lookup: dict[tuple, dict[str, float]],
+    spot: float,
+    t_front: float,
+    t_back1: float,
+    front_expiry: dt.date,
+    front_iv: float,
+    back_iv: float,
+) -> dict[str, float]:
+    """Compute per-leg BSM Greeks and inject into leg dicts.
+
+    Returns net Greeks dict summed over all legs.
+    """
+    r = config.RISK_FREE_RATE
+    q = config.DIVIDEND_YIELD
+    net: dict[str, float] = {
+        "delta": 0.0,
+        "gamma": 0.0,
+        "vega": 0.0,
+        "theta": 0.0,
+    }
+    for leg in legs:
+        leg_expiry = dt.date.fromisoformat(leg["expiry"])
+        is_front = leg_expiry == front_expiry
+        t = t_front if is_front else t_back1
+        key = (leg_expiry, leg["option_type"], float(leg["strike"]))
+        chain_data = lookup.get(key)
+        iv = (
+            chain_data["iv"]
+            if chain_data
+            else (front_iv if is_front else back_iv)
+        )
+        leg["iv"] = iv
+
+        d = bsm_delta(
+            spot, leg["strike"], t, r, q, iv, leg["option_type"]
+        )
+        g = bsm_gamma(
+            spot, leg["strike"], t, r, q, iv, leg["option_type"]
+        )
+        v = bsm_vega(
+            spot, leg["strike"], t, r, q, iv, leg["option_type"]
+        )
+        th = bsm_theta(
+            spot, leg["strike"], t, r, q, iv, leg["option_type"]
+        )
+        leg["delta"] = d
+        leg["gamma"] = g
+        leg["vega"] = v
+        leg["theta"] = th
+
+        sign = 1.0 if leg["side"] == "BUY" else -1.0
+        qty = leg["qty"] * sign
+        net["delta"] += qty * d
+        net["gamma"] += qty * g
+        net["vega"] += qty * v
+        net["theta"] += qty * th
+    return net
+
+
+def _not_applicable_reason(name: str, snapshot: dict) -> str:
+    """Return a human-readable reason why a conditional strategy was skipped.
+    """
+    if name in ("CALL_BACKSPREAD", "PUT_BACKSPREAD"):
+        reasons = []
+        iv_ratio = snapshot.get("iv_ratio", 0.0)
+        if iv_ratio < config.BACKSPREAD_MIN_IV_RATIO:
+            reasons.append(
+                f"IV ratio {iv_ratio:.2f} < "
+                f"{config.BACKSPREAD_MIN_IV_RATIO} required"
+            )
+        evr = snapshot.get("event_variance_ratio", 0.0)
+        if evr < config.BACKSPREAD_MIN_EVENT_VAR_RATIO:
+            reasons.append(
+                f"event var ratio {evr:.2f} < "
+                f"{config.BACKSPREAD_MIN_EVENT_VAR_RATIO} required"
+            )
+        im = snapshot.get("implied_move", 0.0)
+        p75 = snapshot.get("historical_p75", 0.0)
+        if im > p75 * config.BACKSPREAD_MAX_IMPLIED_OVER_P75:
+            reasons.append(
+                f"implied move {im:.3f} > "
+                f"P75×{config.BACKSPREAD_MAX_IMPLIED_OVER_P75} "
+                f"(overpriced)"
+            )
+        sd = snapshot.get("short_delta", 0.0)
+        if sd < config.BACKSPREAD_MIN_SHORT_DELTA:
+            reasons.append(
+                f"short delta {sd:.3f} < "
+                f"{config.BACKSPREAD_MIN_SHORT_DELTA} required"
+            )
+        dte = snapshot.get("back_dte", 0)
+        if not (
+            config.BACKSPREAD_LONG_DTE_MIN
+            <= dte
+            <= config.BACKSPREAD_LONG_DTE_MAX
+        ):
+            reasons.append(
+                f"back DTE {dte}d outside "
+                f"[{config.BACKSPREAD_LONG_DTE_MIN}, "
+                f"{config.BACKSPREAD_LONG_DTE_MAX}]"
+            )
+        return "; ".join(reasons) if reasons else "Conditions not met"
+    if name == "POST_EVENT_CALENDAR":
+        days = snapshot.get("days_after_event", 0)
+        if days == 0:
+            return (
+                "Entry requires 1–3 days after earnings event "
+                "(currently pre-event)"
+            )
+        return (
+            f"{days}d after event exceeds the 3-day entry window"
+        )
+    return "Entry conditions not met"
 
 
 def main() -> None:
@@ -148,12 +353,16 @@ def main() -> None:
         if event_date is None:
             event_date = get_next_earnings_date(config.TICKER)
         if event_date is None:
-            raise ValueError("Event date not provided and could not be fetched.")
+            raise ValueError(
+                "Event date not provided and could not "
+                "be fetched."
+            )
         event_date = _normalize_event_date(event_date)
         # Allow past event dates for test mode, but require future for live
         if not args.test_data and event_date <= dt.date.today():
             LOGGER.warning(
-                "Event date %s is not in the future. Proceeding anyway for testing.",
+                "Event date %s is not in the future. "
+                "Proceeding anyway for testing.",
                 event_date,
             )
 
@@ -243,12 +452,20 @@ def main() -> None:
         back2_expiry,
     )
 
-    front_iv = float(event_info["front_iv"]) if event_info["front_iv"] is not None else 0.0
-    back_iv = float(event_info["back_iv"]) if event_info["back_iv"] is not None else 0.0
+    front_iv = (
+        float(event_info["front_iv"])
+        if event_info["front_iv"] is not None
+        else 0.0
+    )
+    back_iv = (
+        float(event_info["back_iv"])
+        if event_info["back_iv"] is not None
+        else 0.0
+    )
     back2_iv = event_info.get("back2_iv")
     event_vol = float(np.sqrt(float(event_info["event_var"])))
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
-    
+
     # Get term structure note from event_info
     term_structure_note = event_info.get("term_structure_note")
 
@@ -256,13 +473,43 @@ def main() -> None:
     t_front = max(t_front, config.TIME_EPSILON)
     gex = gex_summary(front_chain, spot, t_front)
     skew = skew_metrics(front_chain, spot, t_front)
-    
+
     gex_note = None
     if (
         gex["abs_gex"] >= config.GEX_LARGE_ABS
         and abs(gex["net_gex"]) / gex["abs_gex"] < 0.1
     ):
         gex_note = "Positioning concentrated but direction uncertain"
+
+    # ── Early snapshot fields for strategy condition gates ───────────
+    today = dt.date.today()
+    iv_ratio = front_iv / max(back_iv, config.TIME_EPSILON)
+    days_after_event = max(0, (today - event_date).days)
+    front_dte = (front_expiry - today).days
+    back_dte = (back1_expiry - today).days
+
+    # ATM strike for delta computation
+    _fc = front_chain.copy()
+    _fc["_dist"] = (_fc["strike"] - spot).abs()
+    atm_strike = float(_fc.sort_values("_dist").iloc[0]["strike"])
+    short_delta = abs(bsm_delta(
+        spot, atm_strike, t_front,
+        config.RISK_FREE_RATE, config.DIVIDEND_YIELD,
+        front_iv, "call",
+    ))
+
+    early_snapshot = {
+        "iv_ratio": iv_ratio,
+        "event_variance_ratio": event_info.get(
+            "event_variance_ratio", 0.0
+        ),
+        "implied_move": implied_move,
+        "historical_p75": hist_p75,
+        "short_delta": short_delta,
+        "days_after_event": days_after_event,
+        "front_dte": front_dte,
+        "back_dte": back_dte,
+    }
 
     scenarios = list(config.IV_SCENARIOS.keys())
     shock_levels = [0] + [shock for shock in config.VOL_SHOCKS if shock != 0]
@@ -283,7 +530,36 @@ def main() -> None:
         spot,
         strangle_offset_pct=strangle_offset,
     )
+
+    # ── Conditionally add backspreads ─────────────────────────────
+    front_expiry_ts = pd.Timestamp(front_expiry)
+    if should_build_strategy("CALL_BACKSPREAD", early_snapshot):
+        call_bs = build_call_backspread(
+            front_chain, spot, front_expiry_ts,
+        )
+        if call_bs is not None:
+            strategies.append(call_bs)
+            LOGGER.info("Added call_backspread to strategy pool.")
+    if should_build_strategy("PUT_BACKSPREAD", early_snapshot):
+        put_bs = build_put_backspread(
+            front_chain, spot, front_expiry_ts,
+        )
+        if put_bs is not None:
+            strategies.append(put_bs)
+            LOGGER.info("Added put_backspread to strategy pool.")
     combined_chain = pd.concat([front_chain, back1_chain], ignore_index=True)
+    chain_lookup = _build_chain_lookup(combined_chain)
+
+    # Collect conditional strategies that did NOT qualify (for report)
+    not_applicable: list[dict] = []
+    for cond_name in (
+        "CALL_BACKSPREAD", "PUT_BACKSPREAD", "POST_EVENT_CALENDAR"
+    ):
+        if not should_build_strategy(cond_name, early_snapshot):
+            not_applicable.append({
+                "name": cond_name,
+                "reason": _not_applicable_reason(cond_name, early_snapshot),
+            })
 
     results = []
     for strategy in strategies:
@@ -300,7 +576,7 @@ def main() -> None:
             config.SLIPPAGE_PCT,
             "base_crush",
         )
-        
+
         # Compute scenario EVs for each strategy
         scenario_evs = {}
         for scenario in scenarios:
@@ -318,7 +594,7 @@ def main() -> None:
                 scenario,
             )
             scenario_evs[scenario] = float(np.mean(pnls))
-        
+
         evs = []
         for scenario in scenarios:
             for shock in shock_levels:
@@ -336,10 +612,10 @@ def main() -> None:
                     scenario,
                 )
                 evs.append(float(np.mean(pnls)))
-        
+
         scenario_ev_std = float(np.std(evs)) if len(evs) > 1 else 0.0
         robustness = 1.0 / (scenario_ev_std + 1e-9)
-        
+
         metrics = compute_metrics(
             strategy,
             base_pnls,
@@ -350,6 +626,22 @@ def main() -> None:
             scenario_evs=scenario_evs,
         )
         metrics["scenario_evs"] = scenario_evs
+        # Enrich legs with per-leg Greeks and compute net Greeks
+        t_back1_years = max(back_dte / 365.0, config.TIME_EPSILON)
+        net_greeks = _enrich_legs_with_greeks(
+            metrics["legs"],
+            chain_lookup,
+            spot,
+            t_front,
+            t_back1_years,
+            front_expiry,
+            front_iv,
+            back_iv,
+        )
+        metrics["net_delta"] = net_greeks["delta"]
+        metrics["net_gamma"] = net_greeks["gamma"]
+        metrics["net_vega"] = net_greeks["vega"]
+        metrics["net_theta"] = net_greeks["theta"]
         pnls = base_pnls
         metrics["pnls"] = pnls
         results.append(metrics)
@@ -386,7 +678,7 @@ def main() -> None:
     rr25_value = f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
     bf25_value = f"{skew['bf25']:.4f}" if skew["bf25"] is not None else "N/A"
 
-    # Build comprehensive snapshot
+    # Build comprehensive snapshot (includes early_snapshot fields)
     snapshot = {
         "spot": spot,
         "event_date": event_date,
@@ -401,13 +693,23 @@ def main() -> None:
         "event_vol_ratio": event_vol_ratio,
         "expected_move_dollar": expected_move_dollar,
         "raw_event_var": event_info["raw_event_var"],
-        "event_variance_ratio": event_info.get("event_variance_ratio", 0.0),
-        "front_back_spread": event_info.get("front_back_spread", 0.0),
+        "event_variance_ratio": event_info.get(
+            "event_variance_ratio", 0.0
+        ),
+        "front_back_spread": event_info.get(
+            "front_back_spread", 0.0
+        ),
         "back_slope": event_info.get("back_slope"),
         "t_front": event_info.get("t_front", t_front),
-        "t_back1": event_info.get("t_back1", t_front + 20/252),
-        "interpolation_method": event_info.get("interpolation_method", "unknown"),
-        "negative_event_var": event_info.get("negative_event_var", False),
+        "t_back1": event_info.get(
+            "t_back1", t_front + 20 / 252
+        ),
+        "interpolation_method": event_info.get(
+            "interpolation_method", "unknown"
+        ),
+        "negative_event_var": event_info.get(
+            "negative_event_var", False
+        ),
         "term_structure_note": term_structure_note,
         "warning_level": event_info["warning_level"],
         "assumption": event_info["assumption"],
@@ -415,10 +717,13 @@ def main() -> None:
         "gex_abs": gex["abs_gex"],
         "gamma_flip": gex.get("gamma_flip"),
         "flip_distance_pct": gex.get("flip_distance_pct"),
-        "top_gamma_strikes": gex.get("top_gamma_strikes", []),
+        "top_gamma_strikes": gex.get(
+            "top_gamma_strikes", []
+        ),
         "gex_dealer_note": (
-            "GEX sign assumes dealers are net short options. "
-            "Interpret regime direction accordingly."
+            "GEX sign assumes dealers are net short "
+            "options. Interpret regime direction "
+            "accordingly."
         ),
         "gex_note": gex_note,
         "mean_abs_move": dist_shape["mean_abs_move"],
@@ -431,6 +736,8 @@ def main() -> None:
         "ev_base": ev_base,
         "ev_2x": ev_2x,
     }
+    # Merge early snapshot fields used by strategy gates
+    snapshot.update(early_snapshot)
 
     # Classify regime
     regime = classify_regime(snapshot)
@@ -438,6 +745,34 @@ def main() -> None:
 
     # Compute alignment for all strategies
     compute_all_alignments(ranked, regime)
+
+    # ── Post-event calendar (separate evaluation model) ───────────
+    post_event_cal = None
+    if should_build_strategy(
+        "POST_EVENT_CALENDAR", early_snapshot
+    ):
+        t_back1 = max(back_dte / 365.0, config.TIME_EPSILON)
+        pe_result = build_post_event_calendar(
+            spot, atm_strike, front_iv, back_iv,
+            t_front, t_back1,
+            pd.Timestamp(front_expiry),
+            pd.Timestamp(back1_expiry),
+        )
+        pe_scenarios = compute_post_event_calendar_scenarios(
+            spot=spot, K=atm_strike,
+            t_short=t_front, t_long=t_back1,
+            iv_long=back_iv,
+            net_cost=pe_result["net_cost"],
+        )
+        post_event_cal = {
+            "strategy": pe_result["strategy"],
+            "details": pe_result,
+            "scenarios": pe_scenarios,
+        }
+        LOGGER.info(
+            "Post-event calendar built: net_cost=%.2f",
+            pe_result["net_cost"],
+        )
 
     report_path = Path(args.output)
     write_report(
@@ -448,6 +783,9 @@ def main() -> None:
             "rankings": ranked,
             "move_plot": move_plot,
             "pnl_plot": pnl_plot,
+            "post_event_calendar": post_event_cal,
+            "not_applicable": not_applicable,
+            "strategy_rationale": STRATEGY_RATIONALE,
         },
     )
 
@@ -582,7 +920,7 @@ def _print_console_snapshot(
     print(f"ImpliedMove / P75:    {implied_ratio:.4f}")
     print(f"EventVol:             {event_vol:.4f}")
     print(f"EventVol / FrontIV:   {event_vol_ratio:.4f}")
-    
+
     if regime:
         print("\n" + "="*60)
         print("REGIME CLASSIFICATION")
@@ -593,7 +931,7 @@ def _print_console_snapshot(
         print(f"Gamma Regime:         {regime['gamma_regime']}")
         print(f"Composite Regime:     {regime['composite_regime']}")
         print(f"Composite Confidence: {regime['confidence']:.2f}")
-    
+
     print("\n" + "="*60)
     print("MICROSTRUCTURE DIAGNOSTICS")
     print("="*60)

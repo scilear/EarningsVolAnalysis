@@ -40,12 +40,17 @@ def score_strategies(results: list[dict]) -> list[dict]:
         else:
             item["risk_penalty_applied"] = False
         item["score"] = score
-        
-        # Add rank and score decomposition
-        item["rank"] = idx + 1
-        item["score_components"] = decompose_score(item, normalization_stats)
-    
-    return sorted(results, key=lambda row: row["score"], reverse=True)
+        item["score_components"] = decompose_score(
+            item, normalization_stats
+        )
+
+    ranked = sorted(
+        results, key=lambda row: row["score"], reverse=True
+    )
+    # Assign ranks after sorting so rank 1 = highest score
+    for rank, item in enumerate(ranked, start=1):
+        item["rank"] = rank
+    return ranked
 
 
 def decompose_score(strategy: dict, normalization_stats: dict) -> dict:

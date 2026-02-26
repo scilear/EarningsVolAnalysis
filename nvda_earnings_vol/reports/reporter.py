@@ -56,6 +56,19 @@ HTML_TEMPLATE = """\
     .metric-box { background: #edf2f7; padding: 12px; border-radius: 4px; text-align: center; }
     .metric-label { font-size: 0.8em; color: #718096; text-transform: uppercase; }
     .metric-value { font-size: 1.2em; font-weight: bold; color: #2d3748; }
+    details { margin: 12px 0; }
+    summary { cursor: pointer; font-weight: 600; color: #4a5568; padding: 8px 12px;
+              background: #edf2f7; border-radius: 4px; user-select: none; }
+    summary:hover { background: #e2e8f0; }
+    details[open] summary { border-radius: 4px 4px 0 0; }
+    .rationale-body { background: #f7fafc; border: 1px solid #e2e8f0;
+                      border-top: none; border-radius: 0 0 4px 4px;
+                      padding: 12px 16px; font-size: 0.95em; color: #4a5568;
+                      line-height: 1.6; }
+    .not-applicable { background: #fff5f5; border-left: 4px solid #fc8181;
+                      padding: 10px 16px; margin: 8px 0; border-radius: 0 4px 4px 0; }
+    .not-applicable strong { color: #c53030; }
+    .not-applicable small { color: #718096; }
   </style>
 </head>
 <body>
@@ -298,14 +311,144 @@ HTML_TEMPLATE = """\
     {% endfor %}
   </table>
 
-  <h2>Top Strategy Trade Sheets</h2>
+  {% if not_applicable %}
+  <h3>Conditional Strategies — Not Evaluated</h3>
+  <p style="color: #718096; font-size: 0.9em;">
+    The following strategies have entry-condition gates and were
+    not activated for this market snapshot.
+  </p>
+  {% for item in not_applicable %}
+  <div class="not-applicable">
+    <strong>{{ item.name }}</strong>
+    <small> — {{ item.reason }}</small>
+  </div>
+  {% endfor %}
+  {% endif %}
 
-  {% for strat in rankings[:3] %}
+  {% if post_event_calendar %}
+  <h2>Post-Event Calendar Spread</h2>
   <div class="trade-sheet">
     <div class="strategy-header">
-      <h3 style="margin: 0; font-size: 1.3em;">{{ strat.rank }}. {{ strat.name }}</h3>
-      <span style="opacity: 0.9;">Composite Score: {{ "%.4f" | format(strat.score) }}</span>
+      <h3 style="margin: 0; font-size: 1.3em;">
+        POST_EVENT_CALENDAR
+      </h3>
+      <span style="opacity: 0.9;">
+        Deterministic scenario evaluation
+        (not MC-scored)
+      </span>
     </div>
+
+    <h4>Structure</h4>
+    <table>
+      <tr>
+        <th>Side</th><th>Type</th>
+        <th>Strike</th><th>Expiry</th>
+        <th>Entry $</th><th>IV</th>
+      </tr>
+      {% for leg in post_event_calendar.strategy.legs %}
+      <tr>
+        <td><strong>{{ leg.side | upper }}</strong></td>
+        <td>{{ leg.option_type | upper }}</td>
+        <td>${{ "%.2f" | format(leg.strike) }}</td>
+        <td>{{ leg.expiry.strftime('%Y-%m-%d') }}</td>
+        <td>
+          {% if leg.entry_price %}
+            ${{ "%.2f" | format(leg.entry_price) }}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if leg.iv %}
+            {{ "%.1f" | format(leg.iv * 100) }}%
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <h4>Entry Pricing</h4>
+    <div class="metric-grid">
+      <div class="metric-box">
+        <div class="metric-label">Short Premium</div>
+        <div class="metric-value">
+          ${{ "%.2f" | format(
+            post_event_calendar.details.short_premium
+          ) }}
+        </div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Long Cost</div>
+        <div class="metric-value">
+          ${{ "%.2f" | format(
+            post_event_calendar.details.long_cost
+          ) }}
+        </div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">Net Debit</div>
+        <div class="metric-value" style="color: #c53030;">
+          ${{ "%.2f" | format(
+            post_event_calendar.details.net_cost
+          ) }}
+        </div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-label">IV Ratio</div>
+        <div class="metric-value">
+          {{ "%.2f" | format(
+            snapshot.iv_ratio
+          ) }}
+        </div>
+      </div>
+    </div>
+
+    <h4>Scenario P&amp;L at Front Expiry</h4>
+    <table>
+      <tr>
+        {% for label in post_event_calendar.scenarios.keys() %}
+        <th>{{ label | replace('_', ' ') | title }}</th>
+        {% endfor %}
+      </tr>
+      <tr>
+        {% for ev in post_event_calendar.scenarios.values() %}
+        <td style="color: {% if ev >= 0 %}#38a169{% else %}#c53030{% endif %}; font-weight: bold;">
+          ${{ "%.2f" | format(ev) }}
+        </td>
+        {% endfor %}
+      </tr>
+    </table>
+
+    <p class="note">
+      Short leg settles at intrinsic; P&amp;L is
+      independent of short-leg IV path. Long leg valued
+      via BSM with {{ "%.0f" | format(
+        (1 - 0.97) * 100
+      ) }}% IV compression.
+    </p>
+  </div>
+  {% endif %}
+
+  <h2>Strategy Trade Sheets</h2>
+
+  {% for strat in rankings %}
+  <div class="trade-sheet">
+    <div class="strategy-header">
+      <h3 style="margin: 0; font-size: 1.3em;">
+        Rank {{ strat.rank }} — {{ strat.name }}
+      </h3>
+      <span style="opacity: 0.9;">
+        Composite Score: {{ "%.4f" | format(strat.score) }}
+        {% if strat.risk_penalty_applied %}
+          &nbsp;(10% undefined-risk penalty applied)
+        {% endif %}
+      </span>
+    </div>
+
+    {% if strategy_rationale and strat.name in strategy_rationale %}
+    <details>
+      <summary>Strategy Rationale &amp; Expected Behaviour</summary>
+      <div class="rationale-body">{{ strategy_rationale[strat.name] }}</div>
+    </details>
+    {% endif %}
 
     <h4>Structure</h4>
     <table>

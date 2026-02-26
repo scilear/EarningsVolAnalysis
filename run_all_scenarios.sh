@@ -93,9 +93,9 @@ for scenario in "${SCENARIOS[@]}"; do
     printf "%-25s %s (%s)\n" "${scenario}:" "${status}" "${duration}"
     
     if [[ "${status}" == "✓ SUCCESS" ]]; then
-        ((success_count++))
+        success_count=$((success_count + 1))
     else
-        ((fail_count++))
+        fail_count=$((fail_count + 1))
     fi
 done
 

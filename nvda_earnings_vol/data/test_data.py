@@ -137,16 +137,17 @@ TEST_SCENARIOS = {
     # front_iv = base_iv + event_vol_premium
     # back_iv  = base_iv + term_structure_slope
     "backspread_favorable": {
-        # iv_ratio = 0.80 / 0.50 = 1.60 >= 1.40 ✓
-        # Large event premium; back3 leg at 0.50 provides cheap convexity.
-        "base_iv": 0.50,
+        # iv_ratio = 0.44 / 0.30 = 1.47 >= 1.40 ✓
+        # implied_move ≈ 0.069 <= P75*0.90 ≈ 0.079 ✓
+        # Lower vol keeps implied_move below the P75 gate.
+        "base_iv": 0.30,
         "iv_skew": 0.03,
         "term_structure_slope": 0.00,
         "net_gex_bias": -0.4,
-        "event_vol_premium": 0.30,
+        "event_vol_premium": 0.14,
         "description": (
-            "High event IV premium: iv_ratio 1.60 satisfies "
-            "backspread entry conditions"
+            "Event IV premium: iv_ratio 1.47 satisfies "
+            "backspread entry + pricing conditions"
         ),
     },
     "backspread_unfavorable": {
@@ -365,10 +366,15 @@ def generate_test_data_set(
     params = TEST_SCENARIOS[scenario]
     LOGGER.info("Generating test data with scenario '%s': %s", scenario, params["description"])
 
-    # Default dates
+    # Default dates — post-event scenarios place event_date
+    # in the past so that days_after_event > 0 in the pipeline.
     today = dt.date.today()
+    is_post_event = scenario.startswith("post_event")
     if event_date is None:
-        event_date = today + dt.timedelta(days=7)
+        if is_post_event:
+            event_date = today - dt.timedelta(days=2)
+        else:
+            event_date = today + dt.timedelta(days=7)
     if front_expiry is None:
         front_expiry = today + dt.timedelta(days=14)
     if back_expiry is None:
