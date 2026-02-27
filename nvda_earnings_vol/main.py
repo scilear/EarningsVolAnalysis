@@ -266,13 +266,22 @@ def _not_applicable_reason(name: str, snapshot: dict) -> str:
 
 def main() -> None:
     """Run earnings vol analysis pipeline."""
-    parser = argparse.ArgumentParser(description="NVDA earnings vol analysis")
+    parser = argparse.ArgumentParser(description="Earnings vol analysis")
+    parser.add_argument(
+        "--ticker",
+        type=str,
+        default=config.TICKER,
+        help="Underlying ticker symbol (default: %(default)s)",
+    )
     parser.add_argument("--event-date", type=str, help="YYYY-MM-DD")
     parser.add_argument(
         "--output",
         type=str,
-        default="reports/nvda_earnings_report.html",
-        help="Output HTML report path",
+        default=None,
+        help=(
+            "Output HTML report path "
+            "(default: reports/<ticker>_earnings_report.html)"
+        ),
     )
     parser.add_argument(
         "--cache-dir",
@@ -321,11 +330,17 @@ def main() -> None:
         help="Save generated test data to specified directory",
     )
     args = parser.parse_args()
+    ticker = args.ticker.upper()
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(levelname)s: %(message)s",
     )
+
+    if args.output is None:
+        args.output = (
+            f"reports/{ticker.lower()}_earnings_report.html"
+        )
 
     # Branch: test data vs live data
     if args.test_data:
@@ -351,7 +366,7 @@ def main() -> None:
         # Live data mode (existing logic)
         event_date = _parse_event_date(args.event_date)
         if event_date is None:
-            event_date = get_next_earnings_date(config.TICKER)
+            event_date = get_next_earnings_date(ticker)
         if event_date is None:
             raise ValueError(
                 "Event date not provided and could not "
@@ -367,8 +382,8 @@ def main() -> None:
             )
 
         try:
-            spot = get_spot_price(config.TICKER)
-            expiries = get_option_expiries(config.TICKER)
+            spot = get_spot_price(ticker)
+            expiries = get_option_expiries(ticker)
             post_event = get_expiries_after(expiries, event_date)
             if len(post_event) < 2:
                 raise ValueError("Insufficient expiries after event date.")
@@ -385,6 +400,7 @@ def main() -> None:
                 cache_dir,
                 args.use_cache,
                 args.refresh_cache,
+                ticker=ticker,
             )
             back1_chain = _load_filtered_chain(
                 back1_expiry,
@@ -392,6 +408,7 @@ def main() -> None:
                 cache_dir,
                 args.use_cache,
                 args.refresh_cache,
+                ticker=ticker,
             )
             back2_chain = (
                 _load_filtered_chain(
@@ -400,6 +417,7 @@ def main() -> None:
                     cache_dir,
                     args.use_cache,
                     args.refresh_cache,
+                    ticker=ticker,
                     allow_empty=True,
                 )
                 if back2_expiry
@@ -419,8 +437,8 @@ def main() -> None:
             return
 
         try:
-            history = get_price_history(config.TICKER, config.HISTORY_YEARS)
-            earnings_dates = get_earnings_dates(config.TICKER)
+            history = get_price_history(ticker, config.HISTORY_YEARS)
+            earnings_dates = get_earnings_dates(ticker)
         except ValueError as exc:
             LOGGER.error("%s", exc)
             return
@@ -784,6 +802,7 @@ def main() -> None:
     write_report(
         report_path,
         {
+            "ticker": ticker,
             "snapshot": snapshot,
             "regime": regime,
             "rankings": ranked,
@@ -876,12 +895,13 @@ def _load_filtered_chain(
     cache_dir: Path,
     use_cache: bool,
     refresh_cache: bool,
+    ticker: str = config.TICKER,
     allow_empty: bool = False,
 ) -> pd.DataFrame | None:
     if expiry is None:
         return None
     chain = get_options_chain(
-        config.TICKER,
+        ticker,
         expiry,
         cache_dir=cache_dir,
         use_cache=use_cache,

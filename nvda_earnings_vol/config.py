@@ -40,7 +40,7 @@ CALENDAR_BACK1_POST_EVENT_IV_FACTOR: float = 0.85
 # ── Backspreads ────────────────────────────────────────────────────────────
 BACKSPREAD_RATIO: tuple[int, int] = (1, 2)   # sell 1, buy 2
 BACKSPREAD_MAX_DEBIT_FRACTION: float = 0.15
-BACKSPREAD_MIN_WING_WIDTH: float = 2.5       # min strike distance (dollars)
+BACKSPREAD_MIN_WING_WIDTH_PCT: float = 0.014  # min strike distance (% of spot)
 # Aliases — keep in sync with BACK3_DTE_MIN/MAX (single source of truth).
 BACKSPREAD_LONG_DTE_MIN: int = BACK3_DTE_MIN
 BACKSPREAD_LONG_DTE_MAX: int = BACK3_DTE_MAX

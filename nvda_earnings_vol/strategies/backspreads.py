@@ -28,7 +28,7 @@ from nvda_earnings_vol.config import (
     BACKSPREAD_MIN_EVENT_VAR_RATIO,
     BACKSPREAD_MIN_IV_RATIO,
     BACKSPREAD_MIN_SHORT_DELTA,
-    BACKSPREAD_MIN_WING_WIDTH,
+    BACKSPREAD_MIN_WING_WIDTH_PCT,
     BACKSPREAD_RATIO,
 )
 from nvda_earnings_vol.strategies.structures import OptionLeg, Strategy
@@ -249,7 +249,7 @@ def _select_backspread_strikes(
     """Select short and long strikes for a backspread.
 
     Short strike is the ATM strike. Long strike is the first OTM strike
-    beyond ``BACKSPREAD_MIN_WING_WIDTH`` from the short strike.
+    beyond ``BACKSPREAD_MIN_WING_WIDTH_PCT * spot`` from the short strike.
 
     Args:
         chain: Option chain with ``strike`` and ``option_type`` columns.
@@ -267,15 +267,16 @@ def _select_backspread_strikes(
     legs["dist"] = (legs["strike"] - spot).abs()
     short_strike = float(legs.sort_values("dist").iloc[0]["strike"])
 
+    min_width = spot * BACKSPREAD_MIN_WING_WIDTH_PCT
     if option_type == "call":
         # Long strike is above short strike (OTM call)
         candidates = legs[
-            legs["strike"] >= short_strike + BACKSPREAD_MIN_WING_WIDTH
+            legs["strike"] >= short_strike + min_width
         ].sort_values("strike")
     else:
         # Long strike is below short strike (OTM put)
         candidates = legs[
-            legs["strike"] <= short_strike - BACKSPREAD_MIN_WING_WIDTH
+            legs["strike"] <= short_strike - min_width
         ].sort_values("strike", ascending=False)
 
     if candidates.empty:
