@@ -563,19 +563,25 @@ def main() -> None:
 
     results = []
     for strategy in strategies:
-        base_pnls = strategy_pnl_vec(
-            strategy,
-            combined_chain,
-            spot,
-            moves_by_shock[0],
-            front_expiry,
-            back1_expiry,
-            event_date,
-            front_iv,
-            back_iv,
-            config.SLIPPAGE_PCT,
-            "base_crush",
-        )
+        try:
+            base_pnls = strategy_pnl_vec(
+                strategy,
+                combined_chain,
+                spot,
+                moves_by_shock[0],
+                front_expiry,
+                back1_expiry,
+                event_date,
+                front_iv,
+                back_iv,
+                config.SLIPPAGE_PCT,
+                "base_crush",
+            )
+        except ValueError as exc:
+            LOGGER.warning(
+                "Skipping strategy %s: %s", strategy.name, exc
+            )
+            continue
 
         # Compute scenario EVs for each strategy
         scenario_evs = {}
