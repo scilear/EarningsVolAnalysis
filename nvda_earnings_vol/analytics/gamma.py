@@ -81,6 +81,7 @@ def gex_summary(
     spot: float,
     t: float,
     gex_range_pct: float = GEX_RANGE_PCT,
+    div_yield: float = DIVIDEND_YIELD,
 ) -> dict[str, float | None | list]:
     """Compute net and absolute gamma exposure.
 
@@ -111,7 +112,7 @@ def gex_summary(
             row["strike"],
             t,
             RISK_FREE_RATE,
-            DIVIDEND_YIELD,
+            div_yield,
             row["impliedVolatility"],
             row["option_type"],  # call or put
         ),

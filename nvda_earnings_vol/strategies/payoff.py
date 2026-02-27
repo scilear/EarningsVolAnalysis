@@ -37,6 +37,7 @@ def strategy_pnl_vec(
     back_iv: float,
     slippage_pct: float,
     scenario: str,
+    div_yield: float = DIVIDEND_YIELD,
 ) -> np.ndarray:
     """Compute P&L distribution for a strategy (vectorized over moves).
     
@@ -96,7 +97,7 @@ def strategy_pnl_vec(
                 leg.strike,
                 t_remaining,
                 RISK_FREE_RATE,
-                DIVIDEND_YIELD,
+                div_yield,
                 post_iv,
                 leg.option_type,
             )
@@ -144,6 +145,7 @@ def strategy_pnl(
     back_iv: float,
     slippage_pct: float,
     scenario: str,
+    div_yield: float = DIVIDEND_YIELD,
 ) -> np.ndarray:
     """Compute P&L distribution for a strategy."""
     lookup = _build_lookup(chain)
@@ -165,6 +167,7 @@ def strategy_pnl(
             expiry_atm_iv,
             slippage_pct,
             scenario,
+            div_yield=div_yield,
         )
         pnls.append(exit_value - entry_cost)
     return np.array(pnls)
@@ -213,6 +216,7 @@ def _exit_value(
     expiry_atm_iv: dict[dt.date, float],
     slippage_pct: float,
     scenario: str,
+    div_yield: float = DIVIDEND_YIELD,
 ) -> float:
     total = 0.0
     for leg in strategy.legs:
@@ -236,7 +240,7 @@ def _exit_value(
                 leg.strike,
                 t_remaining,
                 RISK_FREE_RATE,
-                DIVIDEND_YIELD,
+                div_yield,
                 post_iv,
                 leg.option_type,
             )

@@ -128,6 +128,31 @@ def get_next_earnings_date(ticker: str) -> dt.date | None:
     return None
 
 
+def get_dividend_yield(ticker: str) -> float:
+    """Return the trailing annual dividend yield for *ticker* as a decimal.
+
+    Reads ``dividendYield`` from yfinance ``.info``.  Falls back to 0.0 if
+    the field is absent or ``None`` (e.g. non-dividend-paying stocks).
+
+    Args:
+        ticker: Underlying ticker symbol.
+
+    Returns:
+        Dividend yield as a decimal (e.g. 0.012 for 1.2%).
+    """
+    try:
+        info = yf.Ticker(ticker).info
+        yield_val = info.get("dividendYield")
+        if yield_val is not None:
+            return float(yield_val)
+    except Exception as exc:
+        LOGGER.warning("Dividend yield fetch failed for %s: %s", ticker, exc)
+    LOGGER.info(
+        "No dividend yield found for %s; defaulting to 0.0", ticker
+    )
+    return 0.0
+
+
 def get_earnings_dates(ticker: str, limit: int = 12) -> list[pd.Timestamp]:
     """Fetch recent earnings dates using yfinance."""
     yf_ticker = yf.Ticker(ticker)

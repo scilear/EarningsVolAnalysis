@@ -94,6 +94,7 @@ def build_post_event_calendar(
     t_long: float,
     front_expiry: pd.Timestamp,
     back3_expiry: pd.Timestamp,
+    div_yield: float = DIVIDEND_YIELD,
 ) -> dict[str, Any]:
     """
     Post-event calendar: SELL 1× front ATM call / BUY 1× back3 ATM call.
@@ -135,11 +136,11 @@ def build_post_event_calendar(
     """
     short_premium = option_price(
         spot, K, max(t_short, TIME_EPSILON),
-        RISK_FREE_RATE, DIVIDEND_YIELD, front_iv, "call",
+        RISK_FREE_RATE, div_yield, front_iv, "call",
     )
     long_cost = option_price(
         spot, K, max(t_long, TIME_EPSILON),
-        RISK_FREE_RATE, DIVIDEND_YIELD, back3_iv, "call",
+        RISK_FREE_RATE, div_yield, back3_iv, "call",
     )
     net_cost = long_cost - short_premium
 
@@ -190,6 +191,7 @@ def compute_post_event_calendar_scenarios(
     t_long: float,
     iv_long: float,
     net_cost: float,
+    div_yield: float = DIVIDEND_YIELD,
 ) -> dict[str, float]:
     """Evaluate post-event calendar P&L across stock-movement scenarios.
 
@@ -241,7 +243,7 @@ def compute_post_event_calendar_scenarios(
         # Long leg: BSM value with mild IV compression
         long_exit = option_price(
             spot_t, K, t_remaining,
-            RISK_FREE_RATE, DIVIDEND_YIELD, compressed_iv, "call",
+            RISK_FREE_RATE, div_yield, compressed_iv, "call",
         )
 
         pnl = long_exit - short_intrinsic - net_cost

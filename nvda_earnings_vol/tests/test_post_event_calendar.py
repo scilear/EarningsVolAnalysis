@@ -100,23 +100,24 @@ class TestIvShortNotInSignature:
     """compute_post_event_calendar_scenarios must not accept iv_short.
 
     Acceptance criterion 9:
-    Calling the function with a positional arg for iv_short (as the old
-    7-argument signature required) must raise TypeError.
+    The function must not have an ``iv_short`` parameter.  Passing it as a
+    keyword argument must raise TypeError regardless of how many positional
+    params exist.
     """
 
     def test_iv_short_not_in_scenario_function_signature(self) -> None:
-        """TypeError when passing iv_short as a positional argument."""
+        """TypeError when passing iv_short as a keyword argument."""
         with pytest.raises(TypeError):
-            # Old 7-arg call: spot, K, t_short, t_long, iv_short, iv_long,
-            # net_cost. The current function only accepts 6 positional args.
+            # iv_short was removed in v5.  Passing it as a kwarg always
+            # raises TypeError regardless of positional arity.
             compute_post_event_calendar_scenarios(
                 195.0,    # spot
                 195.0,    # K
                 3 / 365,  # t_short
                 25 / 365,  # t_long
-                0.55,   # iv_short — REMOVED in v5, causes TypeError
-                0.46,   # iv_long
-                4.50,   # net_cost
+                0.46,     # iv_long
+                4.50,     # net_cost
+                iv_short=0.55,  # must not exist → TypeError
             )
 
     def test_correct_six_arg_call_succeeds(self) -> None:

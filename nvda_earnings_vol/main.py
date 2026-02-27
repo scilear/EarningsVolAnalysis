@@ -32,6 +32,7 @@ from nvda_earnings_vol.data.filters import (
     filter_by_moneyness,
 )
 from nvda_earnings_vol.data.loader import (
+    get_dividend_yield,
     get_earnings_dates,
     get_expiries_after,
     get_next_earnings_date,
@@ -156,13 +157,14 @@ def _enrich_legs_with_greeks(
     front_expiry: dt.date,
     front_iv: float,
     back_iv: float,
+    div_yield: float = config.DIVIDEND_YIELD,
 ) -> dict[str, float]:
     """Compute per-leg BSM Greeks and inject into leg dicts.
 
     Returns net Greeks dict summed over all legs.
     """
     r = config.RISK_FREE_RATE
-    q = config.DIVIDEND_YIELD
+    q = div_yield
     net: dict[str, float] = {
         "delta": 0.0,
         "gamma": 0.0,
@@ -346,6 +348,7 @@ def main() -> None:
     if args.test_data:
         test_data = _load_test_data_mode(args)
         spot = test_data["spot"]
+        div_yield = config.DIVIDEND_YIELD
         event_date = test_data["event_date"]
         front_expiry = test_data["front_expiry"]
         back1_expiry = test_data["back_expiry"]
@@ -383,6 +386,8 @@ def main() -> None:
 
         try:
             spot = get_spot_price(ticker)
+            div_yield = get_dividend_yield(ticker)
+            LOGGER.info("Dividend yield for %s: %.4f", ticker, div_yield)
             expiries = get_option_expiries(ticker)
             post_event = get_expiries_after(expiries, event_date)
             if len(post_event) < 2:
@@ -489,8 +494,8 @@ def main() -> None:
 
     t_front = business_days(dt.date.today(), front_expiry) / 252.0
     t_front = max(t_front, config.TIME_EPSILON)
-    gex = gex_summary(front_chain, spot, t_front)
-    skew = skew_metrics(front_chain, spot, t_front)
+    gex = gex_summary(front_chain, spot, t_front, div_yield=div_yield)
+    skew = skew_metrics(front_chain, spot, t_front, div_yield=div_yield)
 
     gex_note = None
     if (
@@ -512,7 +517,7 @@ def main() -> None:
     atm_strike = float(_fc.sort_values("_dist").iloc[0]["strike"])
     short_delta = abs(bsm_delta(
         spot, atm_strike, t_front,
-        config.RISK_FREE_RATE, config.DIVIDEND_YIELD,
+        config.RISK_FREE_RATE, div_yield,
         front_iv, "call",
     ))
 
@@ -594,6 +599,7 @@ def main() -> None:
                 back_iv,
                 config.SLIPPAGE_PCT,
                 "base_crush",
+                div_yield=div_yield,
             )
         except ValueError as exc:
             LOGGER.warning(
@@ -616,6 +622,7 @@ def main() -> None:
                 back_iv,
                 config.SLIPPAGE_PCT,
                 scenario,
+                div_yield=div_yield,
             )
             scenario_evs[scenario] = float(np.mean(pnls))
 
@@ -634,6 +641,7 @@ def main() -> None:
                     back_iv,
                     config.SLIPPAGE_PCT,
                     scenario,
+                    div_yield=div_yield,
                 )
                 evs.append(float(np.mean(pnls)))
 
@@ -661,6 +669,7 @@ def main() -> None:
             front_expiry,
             front_iv,
             back_iv,
+            div_yield=div_yield,
         )
         metrics["net_delta"] = net_greeks["delta"]
         metrics["net_gamma"] = net_greeks["gamma"]
@@ -781,12 +790,14 @@ def main() -> None:
             t_front, t_back1,
             pd.Timestamp(front_expiry),
             pd.Timestamp(back1_expiry),
+            div_yield=div_yield,
         )
         pe_scenarios = compute_post_event_calendar_scenarios(
             spot=spot, K=atm_strike,
             t_short=t_front, t_long=t_back1,
             iv_long=back_iv,
             net_cost=pe_result["net_cost"],
+            div_yield=div_yield,
         )
         post_event_cal = {
             "strategy": pe_result["strategy"],

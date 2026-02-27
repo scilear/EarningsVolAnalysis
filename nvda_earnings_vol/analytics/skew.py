@@ -18,6 +18,7 @@ def skew_metrics(
     chain: pd.DataFrame,
     spot: float,
     t: float,
+    div_yield: float = DIVIDEND_YIELD,
 ) -> dict[str, float | None]:
     """Compute 25d risk reversal and butterfly from chain IVs."""
     calls = chain[chain["option_type"] == "call"].copy()
@@ -29,7 +30,7 @@ def skew_metrics(
             row["strike"],
             t,
             RISK_FREE_RATE,
-            DIVIDEND_YIELD,
+            div_yield,
             row["impliedVolatility"],
             "call",
         ),
@@ -41,7 +42,7 @@ def skew_metrics(
             row["strike"],
             t,
             RISK_FREE_RATE,
-            DIVIDEND_YIELD,
+            div_yield,
             row["impliedVolatility"],
             "put",
         ),
