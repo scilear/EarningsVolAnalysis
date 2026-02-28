@@ -7,25 +7,12 @@ the output.
 
 ---
 
-## 1. `DIVIDEND_YIELD` — **must review per ticker**
+## 1. `DIVIDEND_YIELD` — ✅ **auto-fetched**
 
-**Location:** `config.py`
-**Current value:** `0.0003` (~0.03% — NVDA's actual yield as of early 2026)
-
-Dividend yield enters BSM pricing and all Greeks.  Errors here create
-systematic mispricing of puts relative to calls.
-
-| Example ticker | Approx yield |
-|---|---|
-| NVDA | ~0.03% |
-| AMZN, META, GOOG | ~0% |
-| MSFT, AAPL | ~0.6–0.9% |
-| SPY | ~1.3% |
-| XOM | ~3–4% |
-
-**Action:** Add a `--div-yield` CLI flag, or build a small lookup table in
-config keyed by ticker.  Consider fetching it automatically from
-`yf.Ticker(ticker).info["dividendYield"]`.
+**Location:** `data/loader.py: get_dividend_yield()`
+Fetched live from `yf.Ticker(ticker).info["dividendYield"]`; falls back
+to 0.0 for non-payers.  Threaded as `div_yield` kwarg through all BSM
+calls (skew, gamma, payoff, post-event calendar, Greek enrichment).
 
 ---
 
@@ -45,34 +32,21 @@ you have historical surface data.
 
 ---
 
-## 3. `GEX_LARGE_ABS` — **OI-scale dependent**
+## 3. `GEX_LARGE_ABS` — ✅ **auto-calibrated**
 
-**Location:** `config.py`
-**Current value:** `1e9` ($1 billion)
-**Comment in code:** "calibrate to OI scale if needed"
-
-The GEX "large gamma" threshold is used in regime classification.  NVDA has
-one of the largest OI footprints in the options market.  A $1B threshold
-will never trigger for a mid-cap name.
-
-**Action:** Either make this a percentage of market-cap or of total-chain OI,
-or set it per-ticker.  A reasonable heuristic: ~0.5% of market cap.
+**Location:** `calibration.py: _gex_large_abs()`
+Set to 0.5% of market cap via `yf.Ticker(ticker).info["marketCap"]`.
+Falls back to `config.GEX_LARGE_ABS` if fetch fails.
 
 ---
 
-## 4. `BACKSPREAD_MIN_WING_WIDTH_PCT` — **converted; verify for low-priced tickers**
+## 4. `BACKSPREAD_MIN_WING_WIDTH_PCT` — ✅ **auto-calibrated**
 
-**Location:** `config.py`
-**Current value:** `0.014` (1.4% of spot — derived from $2.50 / $175 NVDA)
-
-Already converted from a dollar amount to a percentage of spot, so it
-scales automatically.  However, on tickers whose option chain has wide
-strike spacing relative to spot (e.g., a $30 stock with $2.50-wide strikes),
-the 1.4% threshold may exclude all viable long strikes.
-
-**Action:** Verify that at least one long strike is found in the backspread
-builder for new tickers before concluding the strategy is structurally
-unavailable.  Reduce to `0.005`–`0.010` if the chain is coarsely spaced.
+**Location:** `calibration.py: _wing_width_pct()`
+Derived from the minimum strike spacing in the raw ATM-region chain
+divided by spot, clamped to [0.005, 0.05].  Passed as `wing_width_pct`
+kwarg to `build_call/put_backspread()`.  Falls back to
+`config.BACKSPREAD_MIN_WING_WIDTH_PCT` on failure.
 
 ---
 
@@ -92,17 +66,14 @@ systematically over- or under-valued.
 
 ---
 
-## 6. `IV_SCENARIOS` — scenario magnitudes
+## 6. `IV_SCENARIOS` — ✅ **auto-calibrated (hard_crush and expansion)**
 
-**Location:** `config.py`
-**Current values:** `hard_crush: front=-0.35, back=-0.10`; `expansion: front=+0.10, back=+0.05`
-
-These shock sizes are representative of NVDA-class earnings events.  Very
-high-vol names (IV > 150% pre-event) or low-vol names (IV < 30%) may see
-larger or smaller realized crushes.
-
-**Action:** Low priority for strategy ranking (the `base_crush` scenario
-dominates); review if you want realistic P&L estimates in the output.
+**Location:** `calibration.py: calibrate_iv_scenarios()`
+`hard_crush` front derived as `sqrt(1 - evr) - 1` (removes the event
+variance component from front IV); back scales with `max(0.03, evr×0.12)`.
+`expansion` scales inversely with event dominance.  `base_crush` is
+unchanged (already market-data-relative).  Mutates `config.IV_SCENARIOS`
+in-place so `payoff.py` picks up the updated values without API changes.
 
 ---
 
@@ -121,16 +92,13 @@ compute a meaningful P75 — the pipeline warns if fewer than 4 are found.
 
 ---
 
-## 8. Liquidity filters — `MIN_OI` and `MAX_SPREAD_PCT`
+## 8. Liquidity filters — ✅ **auto-calibrated**
 
-**Location:** `config.py`
-**Current values:** `MIN_OI = 100`, `MAX_SPREAD_PCT = 0.05` (5%)
-
-NVDA is extremely liquid.  For less-liquid names, these thresholds may
-filter out the entire chain.
-
-**Action:** Reduce `MIN_OI` to `10–50` and loosen `MAX_SPREAD_PCT` to
-`0.10–0.15` for mid-cap names.  Consider making these CLI flags.
+**Location:** `calibration.py: _min_oi()` and `_max_spread_pct()`
+`min_oi` = 20th-pct OI in ATM ±15% region, clamped [10, 200].
+`max_spread_pct` = 65th-pct bid-ask spread% in ATM ±15%, clamped [0.03, 0.20].
+Both derived from the raw (pre-filter) front chain and passed to
+`_load_filtered_chain()` for all expiries.  Fall back to config defaults.
 
 ---
 
