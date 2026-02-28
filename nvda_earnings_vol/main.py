@@ -12,6 +12,10 @@ import pandas as pd
 
 from nvda_earnings_vol import config
 from nvda_earnings_vol.alignment import compute_all_alignments
+from nvda_earnings_vol.calibration import (
+    calibrate_ticker_params,
+    calibrate_iv_scenarios,
+)
 from nvda_earnings_vol.analytics.bsm import (
     delta as bsm_delta,
     gamma as bsm_gamma,
@@ -349,6 +353,7 @@ def main() -> None:
         test_data = _load_test_data_mode(args)
         spot = test_data["spot"]
         div_yield = config.DIVIDEND_YIELD
+        cal: dict = {}  # no calibration in test mode; use config defaults
         event_date = test_data["event_date"]
         front_expiry = test_data["front_expiry"]
         back1_expiry = test_data["back_expiry"]
@@ -399,6 +404,14 @@ def main() -> None:
             back2_expiry = post_event[2] if len(post_event) > 2 else None
 
             cache_dir = Path(args.cache_dir)
+
+            # Calibrate liquidity/wing-width params from the raw (unfiltered)
+            # front chain before applying any filters.
+            raw_front = get_options_chain(
+                ticker, front_expiry, cache_dir=None, use_cache=False,
+            )
+            cal = calibrate_ticker_params(ticker, raw_front, spot)
+
             front_chain = _load_filtered_chain(
                 front_expiry,
                 spot,
@@ -406,6 +419,8 @@ def main() -> None:
                 args.use_cache,
                 args.refresh_cache,
                 ticker=ticker,
+                min_oi=cal["min_oi"],
+                max_spread_pct=cal["max_spread_pct"],
             )
             back1_chain = _load_filtered_chain(
                 back1_expiry,
@@ -414,6 +429,8 @@ def main() -> None:
                 args.use_cache,
                 args.refresh_cache,
                 ticker=ticker,
+                min_oi=cal["min_oi"],
+                max_spread_pct=cal["max_spread_pct"],
             )
             back2_chain = (
                 _load_filtered_chain(
@@ -423,6 +440,8 @@ def main() -> None:
                     args.use_cache,
                     args.refresh_cache,
                     ticker=ticker,
+                    min_oi=cal["min_oi"],
+                    max_spread_pct=cal["max_spread_pct"],
                     allow_empty=True,
                 )
                 if back2_expiry
@@ -489,6 +508,13 @@ def main() -> None:
     event_vol = float(np.sqrt(float(event_info["event_var"])))
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
 
+    # Calibrate IV scenario magnitudes from event vol structure (live only)
+    if not args.test_data and front_iv > 0 and back_iv > 0:
+        event_variance_ratio = float(
+            event_info.get("event_variance_ratio", 0.0)
+        )
+        calibrate_iv_scenarios(front_iv, back_iv, event_variance_ratio)
+
     # Get term structure note from event_info
     term_structure_note = event_info.get("term_structure_note")
 
@@ -497,9 +523,10 @@ def main() -> None:
     gex = gex_summary(front_chain, spot, t_front, div_yield=div_yield)
     skew = skew_metrics(front_chain, spot, t_front, div_yield=div_yield)
 
+    gex_large_abs = cal.get("gex_large_abs", config.GEX_LARGE_ABS)
     gex_note = None
     if (
-        gex["abs_gex"] >= config.GEX_LARGE_ABS
+        gex["abs_gex"] >= gex_large_abs
         and abs(gex["net_gex"]) / gex["abs_gex"] < 0.1
     ):
         gex_note = "Positioning concentrated but direction uncertain"
@@ -555,10 +582,15 @@ def main() -> None:
     )
 
     # ── Conditionally add backspreads ─────────────────────────────
+    wing_width_pct = cal.get(
+        "backspread_min_wing_width_pct",
+        config.BACKSPREAD_MIN_WING_WIDTH_PCT,
+    )
     front_expiry_ts = pd.Timestamp(front_expiry)
     if should_build_strategy("CALL_BACKSPREAD", early_snapshot):
         call_bs = build_call_backspread(
             front_chain, spot, front_expiry_ts,
+            wing_width_pct=wing_width_pct,
         )
         if call_bs is not None:
             strategies.append(call_bs)
@@ -566,6 +598,7 @@ def main() -> None:
     if should_build_strategy("PUT_BACKSPREAD", early_snapshot):
         put_bs = build_put_backspread(
             front_chain, spot, front_expiry_ts,
+            wing_width_pct=wing_width_pct,
         )
         if put_bs is not None:
             strategies.append(put_bs)
@@ -907,6 +940,8 @@ def _load_filtered_chain(
     use_cache: bool,
     refresh_cache: bool,
     ticker: str = config.TICKER,
+    min_oi: int = config.MIN_OI,
+    max_spread_pct: float = config.MAX_SPREAD_PCT,
     allow_empty: bool = False,
 ) -> pd.DataFrame | None:
     if expiry is None:
@@ -925,14 +960,14 @@ def _load_filtered_chain(
         config.MONEYNESS_LOW,
         config.MONEYNESS_HIGH,
     )
-    chain = filter_by_liquidity(chain, config.MIN_OI, config.MAX_SPREAD_PCT)
+    chain = filter_by_liquidity(chain, min_oi, max_spread_pct)
     LOGGER.info("Options rows post-filter for %s: %d", expiry, len(chain))
     if chain.empty:
         if allow_empty:
             return None
         raise ValueError(
             f"No options remain after filtering for {expiry} "
-            f"(OI>={config.MIN_OI}, spread<={config.MAX_SPREAD_PCT}, "
+            f"(OI>={min_oi}, spread<={max_spread_pct}, "
             f"moneyness {config.MONEYNESS_LOW}-{config.MONEYNESS_HIGH})."
         )
     return chain

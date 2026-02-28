@@ -113,6 +113,7 @@ def build_call_backspread(
     front_chain: pd.DataFrame,
     spot: float,
     front_expiry: pd.Timestamp,
+    wing_width_pct: float = BACKSPREAD_MIN_WING_WIDTH_PCT,
 ) -> Strategy | None:
     """Build a 1×2 call backspread: SELL 1 ATM call, BUY 2 OTM calls.
 
@@ -121,13 +122,15 @@ def build_call_backspread(
             ``strike``, ``option_type``, and ``expiry`` columns.
         spot: Current underlying spot price.
         front_expiry: Front-month expiry timestamp for leg labelling.
+        wing_width_pct: Minimum wing width as a fraction of spot.  Defaults
+            to ``config.BACKSPREAD_MIN_WING_WIDTH_PCT``.
 
     Returns:
         A :class:`Strategy` for the call backspread, or ``None`` if no
         OTM strike satisfying the minimum wing-width constraint exists.
     """
     short_strike, long_strike = _select_backspread_strikes(
-        front_chain, spot, "call"
+        front_chain, spot, "call", wing_width_pct=wing_width_pct
     )
     if short_strike is None or long_strike is None:
         LOGGER.warning("Call backspread: no valid strikes found.")
@@ -159,6 +162,7 @@ def build_put_backspread(
     front_chain: pd.DataFrame,
     spot: float,
     front_expiry: pd.Timestamp,
+    wing_width_pct: float = BACKSPREAD_MIN_WING_WIDTH_PCT,
 ) -> Strategy | None:
     """Build a 1×2 put backspread: SELL 1 ATM put, BUY 2 OTM puts.
 
@@ -167,13 +171,15 @@ def build_put_backspread(
             ``strike``, ``option_type``, and ``expiry`` columns.
         spot: Current underlying spot price.
         front_expiry: Front-month expiry timestamp for leg labelling.
+        wing_width_pct: Minimum wing width as a fraction of spot.  Defaults
+            to ``config.BACKSPREAD_MIN_WING_WIDTH_PCT``.
 
     Returns:
         A :class:`Strategy` for the put backspread, or ``None`` if no
         OTM strike satisfying the minimum wing-width constraint exists.
     """
     short_strike, long_strike = _select_backspread_strikes(
-        front_chain, spot, "put"
+        front_chain, spot, "put", wing_width_pct=wing_width_pct
     )
     if short_strike is None or long_strike is None:
         LOGGER.warning("Put backspread: no valid strikes found.")
@@ -245,11 +251,12 @@ def _select_backspread_strikes(
     chain: pd.DataFrame,
     spot: float,
     option_type: str,
+    wing_width_pct: float = BACKSPREAD_MIN_WING_WIDTH_PCT,
 ) -> tuple[float | None, float | None]:
     """Select short and long strikes for a backspread.
 
     Short strike is the ATM strike. Long strike is the first OTM strike
-    beyond ``BACKSPREAD_MIN_WING_WIDTH_PCT * spot`` from the short strike.
+    beyond ``wing_width_pct * spot`` from the short strike.
 
     Args:
         chain: Option chain with ``strike`` and ``option_type`` columns.
@@ -267,7 +274,7 @@ def _select_backspread_strikes(
     legs["dist"] = (legs["strike"] - spot).abs()
     short_strike = float(legs.sort_values("dist").iloc[0]["strike"])
 
-    min_width = spot * BACKSPREAD_MIN_WING_WIDTH_PCT
+    min_width = spot * wing_width_pct
     if option_type == "call":
         # Long strike is above short strike (OTM call)
         candidates = legs[

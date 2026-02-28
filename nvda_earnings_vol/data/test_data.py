@@ -446,10 +446,16 @@ def _generate_price_history(
     rng = np.random.default_rng(seed)
 
     days = int(years * 252)
+    # Snap end to the last business day in case today is a weekend.
+    # pd.bdate_range(end=weekend, periods=N) returns N-1 dates in some
+    # pandas versions, causing a length mismatch with the returns array.
+    end_ts = pd.Timestamp(dt.date.today())
+    if end_ts.dayofweek >= 5:  # Saturday=5, Sunday=6
+        end_ts -= pd.Timedelta(days=end_ts.dayofweek - 4)
     dates = pd.bdate_range(
-        end=dt.date.today(),
+        end=end_ts.date(),
         periods=days,
-        freq="B"  # Business days
+        freq="B",
     )
 
     # Random walk with drift and volatility clustering
