@@ -22,7 +22,8 @@ echo ""
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
 
-# Define all test scenarios (9 original + 5 v6 backspread/post-event = 14)
+# Define all test scenarios (9 original + 5 v6 backspread/post-event
+# + 6 v7 multi-ticker profiles = 20)
 SCENARIOS=(
     "baseline"
     "high_vol"
@@ -38,6 +39,12 @@ SCENARIOS=(
     "backspread_overpriced"
     "post_event_entry"
     "post_event_flat"
+    "high_dividend"
+    "mega_cap_tight"
+    "small_cap_wide_spread"
+    "high_iv_ratio_entry"
+    "distressed_deep_skew"
+    "minimal_history"
 )
 
 # Track results
@@ -287,3 +294,11 @@ elif command -v open &> /dev/null; then
 fi
 
 echo "Done!"
+
+# CI acceptance gate: exit non-zero if any scenario failed.
+if [[ "${fail_count}" -gt 0 ]]; then
+    echo ""
+    echo "ACCEPTANCE FAILURE: ${fail_count} scenario(s) failed."
+    exit 1
+fi
+echo "ALL SCENARIOS PASSED"

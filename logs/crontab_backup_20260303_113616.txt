@@ -1,0 +1,56 @@
+# Portfolio Monitor - Automated Price Updates (via FastAPI)
+#
+# Market Close Times (ET):
+# - US Stock Market: 4:00 PM ET
+# - Options Market: 4:00 PM ET
+#
+# Update Schedule:
+# - Options: 3:45 PM ET (15 min before close) - Get intraday prices
+# - Stocks: 5:30 PM ET (after close) - Get final EOD prices
+#
+# Times are in CET/CEST timezone. Adjust if needed!
+#
+# IMPORTANT: Make sure the FastAPI backend is running!
+#   cd /home/fabien/Documents/portfoliomonitor/pm_frontend/backend
+#   python main.py &
+
+# Options update - 3:45 PM ET = 9:45 PM CET (15 min before US close)
+# Monday-Friday only
+#45 21 * * 1-5 /home/fabien/Documents/portfoliomonitor/scripts/pricing/cron_api_update_options.sh
+
+# Stocks EOD update - 5:30 PM ET = 11:30 PM CET (after US close)
+# Monday-Friday only
+#30 23 * * 1-5 /home/fabien/Documents/portfoliomonitor/scripts/pricing/cron_api_update_stocks.sh
+
+# Full update on weekends (for international markets)
+# Saturday at 6:00 PM CET
+#0 18 * * 6 /home/fabien/Documents/portfoliomonitor/scripts/pricing/cron_api_update_all.sh
+
+# Portfolio Monitor - Automated Tasks
+#
+# Gmail IBKR CSV Fetch
+# Runs daily at 10:30 AM to catch morning email delivery
+# The script fetches emails from the last run (or last 24h on first run, max 2 days)
+# Weekdays (Mon-Fri)
+#30 10 * * 1-5 /home/fabien/Documents/portfoliomonitor/scripts/automation/cron_fetch_ibkr_gmail.sh
+# Saturday morning
+#30 10 * * 6 /home/fabien/Documents/portfoliomonitor/scripts/automation/cron_fetch_ibkr_gmail.sh
+# Sunday morning
+#30 10 * * 0 /home/fabien/Documents/portfoliomonitor/scripts/automation/cron_fetch_ibkr_gmail.sh
+
+
+# Intraday Price Updates - Every 15 minutes all day (scripts check trading hours internally)
+# US Markets: Script checks for 9:30 AM - 3:45 PM ET (skips 3:45 PM, handled by EOD)
+# Python script handles timezone conversion and DST automatically via pytz
+#*/15 * * * 1-5 /home/fabien/Documents/portfoliomonitor/scripts/pricing/cron_intraday_update_us.sh
+
+# Europe/Asia Markets: Script checks for Europe (8:00-16:30 CET) or Asia (9:00-15:00 JST) trading hours
+# Python script handles timezone conversion and DST automatically via pytz
+#*/15 * * * 1-5 /home/fabien/Documents/portfoliomonitor/scripts/pricing/cron_intraday_update_europe_asia.sh
+
+# save the db locally
+0 11 * * * export PM_REMOTE_HOST="fabien@107.175.67.48" PM_REMOTE_PORT="2222" && /home/fabien/Documents/portfoliomonitor/scripts/backup/pull_database_remote.sh >> ~/logs/pm_db_pull.log 2>&1
+# Wendy Config Backups - Daily at 1:00 AM
+0 1 * * * /home/fabien/clawd/scripts/backup_gemini_config.sh
+5 1 * * * /home/fabien/clawd/scripts/backup_openclaw_config.sh
+7 7 * * * env -i HOME=$HOME PATH=/home/fabien/.nvm/versions/node/v20.19.5/bin:/usr/bin:/bin:/usr/local/bin bash -c 'cd /home/fabien/clawd && ./scripts/publish_gemini_report.sh'

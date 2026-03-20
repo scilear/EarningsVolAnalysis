@@ -44,7 +44,7 @@ def event_variance(
     # Initialize back2 values
     back2_iv: float | None = None
     t_back2: float | None = None
-    
+
     if back2_chain is not None and back2_expiry is not None:
         back2_iv_value = atm_iv(back2_chain, spot)
         t_back2_value = max(
@@ -53,7 +53,7 @@ def event_variance(
         )
         back2_iv = back2_iv_value
         t_back2 = t_back2_value
-        # tv_pre is already total variance (T * IV^2); no extra scaling.
+        # tv_pre is total variance (T * IV^2); no extra scaling.
         tv_pre = _linear_interp(
             t_back1,
             t_back1 * back1_iv**2,
@@ -63,27 +63,35 @@ def event_variance(
         )
         assumption = "Term structure interpolation"
     else:
-        # Use two-point interpolation with back1 when available
+        # Single back expiry: constant-IV assumption between front and back1.
         tv_pre = max(t_front - dt_event, TIME_EPSILON) * back1_iv**2
-        assumption = "Two-point term structure interpolation"
+        assumption = "Single-point term structure assumption"
 
     raw_event_var_annualized = (t_front * front_iv**2 - tv_pre) / dt_event
-    event_var_daily = raw_event_var_annualized / 252.0  # Scale to 1-day variance
+    event_var_daily = raw_event_var_annualized / 252.0
     ratio = abs(event_var_daily) / max(front_iv**2 / 252.0, TIME_EPSILON)
     warning_level = None
     if raw_event_var_annualized < 0:
         warning_level = "severe" if ratio > 0.10 else "mild"
-        LOGGER.warning("Negative event variance detected: %.6f", raw_event_var_annualized)
+        LOGGER.warning(
+            "Negative event variance detected: %.6f",
+            raw_event_var_annualized,
+        )
 
     event_var = max(event_var_daily, 0.0)
 
-    # Compute additional fields for enhanced reporting
-    total_front_var = t_front * front_iv ** 2 / 252.0  # Daily front variance
-    raw_event_var = event_var_daily  # Store daily variance for ratio
-    event_variance_ratio = raw_event_var / total_front_var if total_front_var > 0 else 0.0
+    # raw_event_var: annualized event-day variance rate (IV² units).
+    # event_variance_ratio: fraction of total front variance from the event.
+    raw_event_var = raw_event_var_annualized
+    total_front_var = t_front * front_iv**2
+    event_variance_ratio = (
+        raw_event_var * dt_event / total_front_var
+        if total_front_var > 0
+        else 0.0
+    )
     front_back_spread = front_iv - back1_iv
     back_slope = (back1_iv - back2_iv) if back2_iv is not None else None
-    
+
     # Determine interpolation method
     if back2_chain is not None and back2_expiry is not None:
         interpolation_method = "Three-point total variance interpolation"
@@ -91,12 +99,14 @@ def event_variance(
         interpolation_method = "Two-point term structure interpolation"
     else:
         interpolation_method = "Single-point assumption"
-    
+
     # Term structure note
     term_structure_note = None
     if front_iv < back1_iv:
-        term_structure_note = "Front IV below back IV; term structure inversion."
-    
+        term_structure_note = (
+            "Front IV below back IV; term structure inversion."
+        )
+
     return {
         # Original fields
         "front_iv": front_iv,
@@ -107,18 +117,15 @@ def event_variance(
         "warning_level": warning_level,
         "assumption": assumption,
         "dt_event": dt_event,
-        
-        # NEW — Term Structure fields
+        # Term Structure fields
         "back2_iv": back2_iv,
         "front_back_spread": front_back_spread,
         "back_slope": back_slope,
-        
-        # NEW — Time values
+        # Time values
         "t_front": t_front,
         "t_back1": t_back1,
         "t_back2": t_back2 if back2_expiry is not None else None,
-        
-        # NEW — Variance attribution
+        # Variance attribution
         "event_variance_ratio": event_variance_ratio,
         "interpolation_method": interpolation_method,
         "negative_event_var": raw_event_var < 0,

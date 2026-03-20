@@ -1,0 +1,18 @@
+# NVDA Options Data Collection - Every 15 minutes from 1h before to 1h after market
+# Market hours: 9:30 AM - 4:00 PM ET
+# Schedule: 8:31-8:46 (before), 9:01-16:46 (during), 17:01 (after)
+# Uses ticker_list.csv for tickers
+
+# Batch download all tickers from ticker_list.csv
+1,16,31,46 8-16 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && .venv/bin/python scripts/download_batch.py --ticker-file ticker_list.csv --workers 3 >> logs/batch_01min.log 2>&1
+
+# Run at minute 01 during hour 17 (5:01 PM only)
+1 17 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && .venv/bin/python scripts/download_batch.py --ticker-file ticker_list.csv --workers 3 >> logs/batch_01min.log 2>&1
+
+# Database backup rotation (keep only 2 most recent)
+0 0 * * * cd /home/fabien/Documents/EarningsVolAnalysis && \
+  cp data/options_intraday.db "data/backups/options_intraday_$(date +\%Y\%m\%d).db" && \
+  ls -t data/backups/options_intraday_*.db | tail -n +3 | xargs -r rm -f
+
+# Log rotation (keep 7 days)
+0 0 * * * find /home/fabien/Documents/EarningsVolAnalysis/logs -name "*.log" -mtime +7 -delete

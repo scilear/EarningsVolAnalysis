@@ -163,19 +163,19 @@ class OptionsDataStore:
                 raise ValueError(f"Required column '{col}' not found in chain data. "
                                f"Available: {list(df.columns)}")
         
-        # Convert expiry to date - handle strings, datetimes, or Timestamp objects
+        # Convert expiry to datetime - handle strings, datetimes, or Timestamp objects
         if df["expiry"].dtype == "object":
             # String expiry dates (from yfinance)
-            df["expiry"] = pd.to_datetime(df["expiry"]).dt.date
-        elif pd.api.types.is_datetime64_any_dtype(df["expiry"]):
-            # Already datetime
-            df["expiry"] = df["expiry"].dt.date
-        else:
+            df["expiry"] = pd.to_datetime(df["expiry"])
+        elif not pd.api.types.is_datetime64_any_dtype(df["expiry"]):
             # Fallback: try to convert
-            df["expiry"] = pd.to_datetime(df["expiry"]).dt.date
+            df["expiry"] = pd.to_datetime(df["expiry"])
         
-        # Calculate days to expiry
-        df["days_to_expiry"] = (df["expiry"] - timestamp.date()).dt.days
+        # Calculate days to expiry using datetime arithmetic
+        df["days_to_expiry"] = (df["expiry"] - pd.Timestamp(timestamp.date())).dt.days
+        
+        # Now convert expiry to date for storage
+        df["expiry"] = df["expiry"].dt.date
         
         # Add metadata
         df["timestamp"] = timestamp

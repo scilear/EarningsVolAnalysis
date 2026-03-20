@@ -203,6 +203,106 @@ TEST_SCENARIOS = {
             "POST_EVENT_CALENDAR conditions not met"
         ),
     },
+    # ── Multi-ticker profile scenarios (v7) ──────────────────────────────
+    "high_dividend": {
+        # Mature high-dividend payer: low vol, small event premium.
+        # front_iv = 0.20 + 0.06 = 0.26
+        # back_iv  = 0.20 + 0.02 = 0.22
+        # iv_ratio ≈ 1.18 < 1.40 → backspread gate fails.
+        "base_iv": 0.20,
+        "iv_skew": 0.01,
+        "term_structure_slope": 0.02,
+        "net_gex_bias": 0.1,
+        "event_vol_premium": 0.06,
+        "description": (
+            "High-dividend mature name — low vol, "
+            "backspread gate expected to fail"
+        ),
+    },
+    "mega_cap_tight": {
+        # Mega-cap: very low vol, tight spreads.
+        # _max_spread_pct calibration hits its floor (0.03).
+        # front_iv = 0.18 + 0.04 = 0.22
+        # back_iv  = 0.18 + 0.01 = 0.19
+        # iv_ratio ≈ 1.16 < 1.40 → backspread gate fails.
+        "base_iv": 0.18,
+        "iv_skew": 0.01,
+        "term_structure_slope": 0.01,
+        "net_gex_bias": 0.0,
+        "event_vol_premium": 0.04,
+        "description": (
+            "Mega-cap liquid name — tight spreads, "
+            "calibration floor clamping"
+        ),
+        "_chain_override": {
+            "spread_multiplier": 0.5,
+        },
+    },
+    "small_cap_wide_spread": {
+        # Small-cap: sparse chain, wide spreads, high vol.
+        # _max_spread_pct calibration hits its ceiling (0.20).
+        # front_iv = 0.65 + 0.25 = 0.90
+        # back_iv  = 0.65 + 0.05 = 0.70
+        # iv_ratio ≈ 1.29 < 1.40 → backspread gate fails on iv_ratio.
+        "base_iv": 0.65,
+        "iv_skew": 0.05,
+        "term_structure_slope": 0.05,
+        "net_gex_bias": -0.2,
+        "event_vol_premium": 0.25,
+        "description": (
+            "Small-cap sparse chain — wide spreads, "
+            "calibration ceiling clamping"
+        ),
+        "_chain_override": {
+            "num_strikes": 13,
+            "spread_multiplier": 4.0,
+        },
+    },
+    "high_iv_ratio_entry": {
+        # Strong backspread setup: high event premium, clean term structure.
+        # front_iv = 0.55 + 0.35 = 0.90
+        # back_iv  = 0.55 + 0.02 = 0.57
+        # iv_ratio ≈ 1.58 >= 1.40 ✓
+        "base_iv": 0.55,
+        "iv_skew": 0.03,
+        "term_structure_slope": 0.02,
+        "net_gex_bias": -0.3,
+        "event_vol_premium": 0.35,
+        "description": (
+            "High iv_ratio backspread opportunity — "
+            "both backspreads expected"
+        ),
+    },
+    "distressed_deep_skew": {
+        # Heavy put skew, inverted term structure (distressed / shorted name).
+        # Validates rr25 negative, term_structure_note fires.
+        "base_iv": 0.75,
+        "iv_skew": 0.12,
+        "term_structure_slope": -0.03,
+        "net_gex_bias": -0.5,
+        "event_vol_premium": 0.15,
+        "description": (
+            "Distressed name — heavy put skew, "
+            "inverted term structure"
+        ),
+    },
+    "minimal_history": {
+        # Only 3 quarters of earnings history.
+        # Pipeline must warn (not crash) on sparse history.
+        # Uses _chain_override "earnings_quarters" key to limit earnings dates.
+        "base_iv": 0.55,
+        "iv_skew": 0.03,
+        "term_structure_slope": 0.02,
+        "net_gex_bias": 0.0,
+        "event_vol_premium": 0.10,
+        "description": (
+            "Ticker with only 3 earnings quarters of history — "
+            "sparse history guard"
+        ),
+        "_chain_override": {
+            "earnings_quarters": 3,
+        },
+    },
 }
 
 
@@ -380,15 +480,20 @@ def generate_test_data_set(
     if back_expiry is None:
         back_expiry = today + dt.timedelta(days=42)
 
-    # Apply chain overrides for special scenarios (e.g., sparse_chain)
+    # Apply chain overrides for special scenarios (e.g., sparse_chain).
+    # The "_earnings_quarters" key is consumed here and not forwarded to
+    # generate_option_chain() (which has no such parameter).
+    chain_override = dict(params.get("_chain_override", {}))
+    earnings_quarters = int(chain_override.pop("earnings_quarters", 12))
+
     chain_params = {
         "spot": spot,
         "iv_skew": params["iv_skew"],
         "net_gex_bias": params["net_gex_bias"],
         "seed": seed,
     }
-    if "_chain_override" in params:
-        chain_params.update(params["_chain_override"])
+    if chain_override:
+        chain_params.update(chain_override)
 
     # Generate front chain with event vol premium
     front_chain = generate_option_chain(
@@ -409,8 +514,11 @@ def generate_test_data_set(
         seed=back_seed,
     )
 
-    # Generate earnings dates (quarterly) - coordinated with price history
-    earnings_dates = _generate_earnings_dates(today, num_quarters=12, seed=seed)
+    # Generate earnings dates (quarterly) - coordinated with price history.
+    # earnings_quarters may be reduced (e.g. minimal_history scenario).
+    earnings_dates = _generate_earnings_dates(
+        today, num_quarters=earnings_quarters, seed=seed
+    )
 
     # Generate price history with spikes aligned to earnings dates
     history = _generate_price_history(
@@ -761,6 +869,79 @@ _SNAPSHOT_SCENARIOS: dict[str, dict] = {
         "median_abs_move": 0.055,
         "skewness": -0.1,
         "kurtosis": 0.7,
+    },
+    # ── Multi-ticker profile snapshots (v7) ────────────────────────────────
+    "high_dividend_snap": {
+        # High-dividend mature name: low vol, small event premium.
+        # iv_ratio = 1.18 < 1.40 → CALL/PUT_BACKSPREAD blocked.
+        # event_variance_ratio = 0.28 < 0.50 → also blocked by EVR gate.
+        "front_iv": 0.26,
+        "back_iv": 0.22,
+        "iv_ratio": 1.18,
+        "event_variance_ratio": 0.28,
+        "implied_move": 0.04,
+        "historical_p75": 0.06,
+        "historical_p90": 0.08,
+        "short_delta": 0.42,
+        "days_after_event": 0,
+        "front_dte": 7,
+        "back_dte": 33,
+        "gex_net": 0.1e9,
+        "gex_abs": 0.2e9,
+        "spot": 140.0,
+        "mean_abs_move": 0.035,
+        "median_abs_move": 0.030,
+        "skewness": -0.1,
+        "kurtosis": 0.5,
+    },
+    "strong_backspread_snap": {
+        # All five backspread entry conditions pass.
+        # iv_ratio = 1.64 >= 1.40 ✓
+        # event_variance_ratio = 0.62 >= 0.50 ✓
+        # implied_move / historical_p75 = 0.08/0.12 = 0.67 <= 0.90 ✓
+        # short_delta = 0.44 >= 0.08 ✓
+        # back_dte = 30 in [21, 45] ✓
+        "front_iv": 0.90,
+        "back_iv": 0.55,
+        "iv_ratio": 1.64,
+        "event_variance_ratio": 0.62,
+        "implied_move": 0.08,
+        "historical_p75": 0.12,
+        "historical_p90": 0.16,
+        "short_delta": 0.44,
+        "days_after_event": 0,
+        "front_dte": 7,
+        "back_dte": 30,
+        "gex_net": -1.5e9,
+        "gex_abs": 2.5e9,
+        "spot": 195.0,
+        "mean_abs_move": 0.10,
+        "median_abs_move": 0.09,
+        "skewness": -0.2,
+        "kurtosis": 1.2,
+    },
+    "small_cap_snap": {
+        # Small-cap boundary: iv_ratio just below 1.40 threshold.
+        # iv_ratio = 1.38 < 1.40 → backspread gate fails on iv_ratio alone.
+        # All other gates would pass if iv_ratio were sufficient.
+        "front_iv": 0.90,
+        "back_iv": 0.65,
+        "iv_ratio": 1.38,
+        "event_variance_ratio": 0.55,
+        "implied_move": 0.09,
+        "historical_p75": 0.13,
+        "historical_p90": 0.18,
+        "short_delta": 0.40,
+        "days_after_event": 0,
+        "front_dte": 7,
+        "back_dte": 28,
+        "gex_net": -0.3e9,
+        "gex_abs": 0.6e9,
+        "spot": 85.0,
+        "mean_abs_move": 0.090,
+        "median_abs_move": 0.085,
+        "skewness": -0.3,
+        "kurtosis": 1.8,
     },
 }
 
