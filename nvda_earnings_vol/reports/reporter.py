@@ -241,6 +241,12 @@ HTML_TEMPLATE = """\
       <td>{{ snapshot.gex_abs | format_gex }}</td>
     </tr>
     <tr>
+      <th>Front GEX</th>
+      <td>{{ snapshot.front_gex | format_gex }}</td>
+      <th>Back GEX</th>
+      <td>{{ snapshot.back_gex | format_gex }}</td>
+    </tr>
+    <tr>
       <th>Gamma Regime</th>
       <td>{{ snapshot.regime.gamma_regime }}</td>
       <th>Flip Level</th>

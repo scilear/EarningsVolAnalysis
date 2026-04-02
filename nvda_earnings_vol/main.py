@@ -520,7 +520,14 @@ def main() -> None:
 
     t_front = business_days(dt.date.today(), front_expiry) / 252.0
     t_front = max(t_front, config.TIME_EPSILON)
+    t_back1_gex = (
+        business_days(dt.date.today(), back1_expiry) / 252.0
+    )
+    t_back1_gex = max(t_back1_gex, config.TIME_EPSILON)
     gex = gex_summary(front_chain, spot, t_front, div_yield=div_yield)
+    back_gex_result = gex_summary(
+        back1_chain, spot, t_back1_gex, div_yield=div_yield
+    )
     skew = skew_metrics(front_chain, spot, t_front, div_yield=div_yield)
 
     gex_large_abs = cal.get("gex_large_abs", config.GEX_LARGE_ABS)
@@ -781,6 +788,8 @@ def main() -> None:
         "assumption": event_info["assumption"],
         "gex_net": gex["net_gex"],
         "gex_abs": gex["abs_gex"],
+        "front_gex": gex["net_gex"],
+        "back_gex": back_gex_result["net_gex"],
         "gamma_flip": gex.get("gamma_flip"),
         "flip_distance_pct": gex.get("flip_distance_pct"),
         "top_gamma_strikes": gex.get(
