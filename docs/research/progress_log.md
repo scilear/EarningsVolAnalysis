@@ -77,6 +77,77 @@
   - defined additive tables for event metadata, snapshot bindings, horizons, realized outcomes, and
     standardized structure replay PnL
   - documented implementation-first phased rollout and acceptance-criteria query paths
+- Integrated the generic bridge into `nvda_earnings_vol/main.py`:
+  - legacy runtime now builds `generic_event`
+  - legacy runtime now builds `generic_market_context`
+  - legacy runtime now builds `generic_playbook`
+  - all three are serialized into the existing report context without changing pricing or ranking
+    math
+- Runtime validation:
+  - `./.venv/bin/python -m pytest nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -c 'import nvda_earnings_vol.main'` passed
+  - import produced a non-blocking matplotlib cache warning because the default config directory is
+    not writable in the sandbox
+- Implemented the additive SQLite event-storage extension in `data/option_data_store.py`:
+  - added additive tables for:
+    - `event_registry`
+    - `event_snapshot_binding`
+    - `event_surface_metrics`
+    - `event_evaluation_horizon`
+    - `event_realized_outcome`
+    - `structure_replay_outcome`
+  - seeded default evaluation horizons on initialization
+  - added store/query methods for event registration, snapshot bindings, surface metrics,
+    realized outcomes, and replay outcomes
+- Added focused storage-extension coverage in
+  `nvda_earnings_vol/tests/test_option_data_store_extension.py`
+- Storage validation:
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
+    nvda_earnings_vol/tests/test_option_data_store_extension.py
+    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+  - current warnings are limited to Python 3.12 sqlite date/datetime adapter deprecations and the
+    sandboxed pytest cache write warning
+- Added replay foundation module in `event_option_playbook/replay.py`:
+  - `ReplayAssumptions`
+  - `EventReplayContext`
+  - `load_event_replay_context(...)`
+  - `replay_selection_summary(...)`
+  - explicit snapshot binding and horizon resolution rules
+- Added focused replay coverage in `nvda_earnings_vol/tests/test_event_replay.py`
+- Replay validation:
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
+    nvda_earnings_vol/tests/test_event_replay.py
+    nvda_earnings_vol/tests/test_option_data_store_extension.py
+    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+- Added the first earnings research workbook at
+  `research/earnings/earnings_event_workbook.py`:
+  - loads the earnings event sample from the additive event store
+  - summarizes realized move, IV crush, surface pricing, and standardized structure outcomes
+  - emits JSON or markdown output through a reproducible CLI
+- Added focused workbook coverage in
+  `nvda_earnings_vol/tests/test_earnings_event_workbook.py`
+- Workbook validation:
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
+    nvda_earnings_vol/tests/test_earnings_event_workbook.py
+    nvda_earnings_vol/tests/test_event_replay.py
+    nvda_earnings_vol/tests/test_option_data_store_extension.py
+    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+- Added the first macro ETF research workbook at
+  `research/macro/macro_event_workbook.py`:
+  - scopes analysis to one explicit macro catalyst at a time
+  - filters by explicit proxy ETF
+  - summarizes event timing coverage, realized moves, surface pricing, and standardized structure
+    outcomes
+  - emits JSON or markdown through a reproducible CLI
+- Added focused macro workbook coverage in
+  `nvda_earnings_vol/tests/test_macro_event_workbook.py`
+- Macro workbook validation:
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
+    nvda_earnings_vol/tests/test_macro_event_workbook.py
+    nvda_earnings_vol/tests/test_earnings_event_workbook.py
+    nvda_earnings_vol/tests/test_event_replay.py
+    nvda_earnings_vol/tests/test_option_data_store_extension.py
+    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
 
 ### In Progress
 
@@ -85,9 +156,10 @@
 
 ### Next
 
-1. Integrate the bridge into the legacy runtime or reporting path without changing scoring math
-2. Implement the additive SQLite table extension from the Task 002 design doc
-3. Decide the first executable research workbook order
-4. Build the migration-safe storage extension plan
+1. Add a small example dataset or backfill helper so the earnings and macro workbooks can be
+   demonstrated on non-test data
+2. Reconcile the remaining sidecar outputs for `012` and `014`
+3. Address the Python 3.12 sqlite adapter deprecation warnings in a narrow follow-up
+4. Start the QuantConnect replay scaffold on top of the now-stable event/replay/workbook contracts
 5. Keep the current earnings workflow pinned behind smoke/unit/integration coverage while the
    generic event engine expands

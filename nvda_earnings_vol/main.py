@@ -10,6 +10,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from event_option_playbook import (
+    build_playbook_recommendation,
+    snapshot_to_event_spec,
+    snapshot_to_market_context,
+)
 from nvda_earnings_vol import config
 from nvda_earnings_vol.alignment import compute_all_alignments
 from nvda_earnings_vol.calibration import (
@@ -851,6 +856,17 @@ def main() -> None:
             pe_result["net_cost"],
         )
 
+    generic_event = snapshot_to_event_spec(ticker, snapshot)
+    generic_market_context = snapshot_to_market_context(snapshot)
+    generic_playbook = build_playbook_recommendation(
+        generic_event,
+        generic_market_context,
+        ranked,
+        rationale_map=STRATEGY_RATIONALE,
+        regime=regime,
+        not_applicable=not_applicable,
+    )
+
     report_path = Path(args.output)
     write_report(
         report_path,
@@ -864,6 +880,9 @@ def main() -> None:
             "post_event_calendar": post_event_cal,
             "not_applicable": not_applicable,
             "strategy_rationale": STRATEGY_RATIONALE,
+            "generic_event": generic_event.to_dict(),
+            "generic_market_context": generic_market_context.to_dict(),
+            "generic_playbook": generic_playbook.to_dict(),
         },
     )
 

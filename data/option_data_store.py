@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -72,7 +72,140 @@ CREATE TABLE IF NOT EXISTS download_log (
 
 CREATE INDEX IF NOT EXISTS idx_download_log_ticker
     ON download_log(ticker, timestamp);
+
+CREATE TABLE IF NOT EXISTS event_registry (
+    event_id TEXT PRIMARY KEY,
+    event_family TEXT NOT NULL,
+    event_name TEXT NOT NULL,
+    underlying_symbol TEXT NOT NULL,
+    proxy_symbol TEXT,
+    event_date DATE NOT NULL,
+    event_ts_utc DATETIME,
+    event_time_label TEXT,
+    source_system TEXT NOT NULL,
+    source_ref TEXT,
+    event_status TEXT NOT NULL DEFAULT 'scheduled',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_registry_lookup
+    ON event_registry(event_family, event_name, underlying_symbol, event_date);
+
+CREATE TABLE IF NOT EXISTS event_snapshot_binding (
+    binding_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    snapshot_label TEXT NOT NULL,
+    timing_bucket TEXT NOT NULL,
+    quote_ts DATETIME NOT NULL,
+    ticker TEXT NOT NULL,
+    rel_trade_days_to_event INTEGER NOT NULL,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    selection_method TEXT NOT NULL,
+    selection_tolerance_minutes INTEGER NOT NULL DEFAULT 30,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, snapshot_label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_snapshot_binding_event
+    ON event_snapshot_binding(event_id, timing_bucket, rel_trade_days_to_event);
+
+CREATE TABLE IF NOT EXISTS event_surface_metrics (
+    metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    snapshot_label TEXT NOT NULL,
+    quote_ts DATETIME NOT NULL,
+    ticker TEXT NOT NULL,
+    spot REAL NOT NULL,
+    front_expiry DATE,
+    back_expiry DATE,
+    front_dte INTEGER,
+    back_dte INTEGER,
+    atm_iv_front REAL,
+    atm_iv_back REAL,
+    iv_ratio REAL,
+    implied_move_pct REAL,
+    event_variance_ratio REAL,
+    skew_25d_rr REAL,
+    skew_25d_bf REAL,
+    gex_proxy REAL,
+    liquidity_score REAL,
+    metric_version TEXT NOT NULL DEFAULT 'v1',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, snapshot_label, metric_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_surface_metrics_event
+    ON event_surface_metrics(event_id, snapshot_label);
+
+CREATE TABLE IF NOT EXISTS event_evaluation_horizon (
+    horizon_code TEXT PRIMARY KEY,
+    horizon_days INTEGER NOT NULL,
+    anchor_type TEXT NOT NULL,
+    description TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS event_realized_outcome (
+    outcome_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    horizon_code TEXT NOT NULL REFERENCES event_evaluation_horizon(horizon_code),
+    pre_snapshot_label TEXT NOT NULL,
+    post_snapshot_label TEXT NOT NULL,
+    spot_pre REAL NOT NULL,
+    spot_post REAL NOT NULL,
+    realized_move_signed_pct REAL NOT NULL,
+    realized_move_abs_pct REAL NOT NULL,
+    rv_window_days INTEGER,
+    realized_vol_pct REAL,
+    iv_front_pre REAL,
+    iv_front_post REAL,
+    iv_change_abs REAL,
+    iv_change_pct REAL,
+    iv_crush_abs REAL,
+    iv_crush_pct REAL,
+    outcome_version TEXT NOT NULL DEFAULT 'v1',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, horizon_code, outcome_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_realized_outcome_event
+    ON event_realized_outcome(event_id, horizon_code);
+
+CREATE TABLE IF NOT EXISTS structure_replay_outcome (
+    replay_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    structure_code TEXT NOT NULL,
+    entry_snapshot_label TEXT NOT NULL,
+    exit_horizon_code TEXT NOT NULL REFERENCES event_evaluation_horizon(horizon_code),
+    quantity_scale REAL NOT NULL DEFAULT 1.0,
+    assumptions_version TEXT NOT NULL,
+    pricing_model_version TEXT NOT NULL,
+    entry_cost REAL NOT NULL,
+    exit_value REAL NOT NULL,
+    realized_pnl REAL NOT NULL,
+    realized_pnl_pct REAL,
+    max_risk_at_entry REAL,
+    status TEXT NOT NULL DEFAULT 'ok',
+    status_detail TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(
+        event_id,
+        structure_code,
+        entry_snapshot_label,
+        exit_horizon_code,
+        assumptions_version
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_structure_replay_outcome_event
+    ON structure_replay_outcome(event_id, structure_code, exit_horizon_code);
 """
+
+DEFAULT_EVALUATION_HORIZONS = (
+    ("h0_close", 0, "event_date", "Same-day close after the event"),
+    ("h1_close", 1, "event_date", "First close after the event"),
+    ("h3_close", 3, "event_date", "Third close after the event"),
+)
 
 
 class OptionsDataStore:
@@ -100,6 +233,14 @@ class OptionsDataStore:
         """Create tables and indexes if they don't exist."""
         with self._get_connection() as conn:
             conn.executescript(CREATE_TABLES_SQL)
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO event_evaluation_horizon
+                (horizon_code, horizon_days, anchor_type, description)
+                VALUES (?, ?, ?, ?)
+                """,
+                DEFAULT_EVALUATION_HORIZONS,
+            )
             conn.commit()
             LOGGER.info(f"Database initialized: {self.db_path}")
     
@@ -253,6 +394,282 @@ class OptionsDataStore:
                    f"({filtered_count} filtered)")
         
         return result
+
+    def register_event(
+        self,
+        event_id: str,
+        event_family: str,
+        event_name: str,
+        underlying_symbol: str,
+        event_date: date | datetime | str,
+        source_system: str,
+        proxy_symbol: str | None = None,
+        event_ts_utc: datetime | None = None,
+        event_time_label: str | None = None,
+        source_ref: str | None = None,
+        event_status: str = "scheduled",
+    ) -> None:
+        """Create or update one event in the additive event registry."""
+        normalized_event_date = _normalize_date(event_date)
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO event_registry (
+                    event_id, event_family, event_name, underlying_symbol,
+                    proxy_symbol, event_date, event_ts_utc, event_time_label,
+                    source_system, source_ref, event_status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id) DO UPDATE SET
+                    event_family = excluded.event_family,
+                    event_name = excluded.event_name,
+                    underlying_symbol = excluded.underlying_symbol,
+                    proxy_symbol = excluded.proxy_symbol,
+                    event_date = excluded.event_date,
+                    event_ts_utc = excluded.event_ts_utc,
+                    event_time_label = excluded.event_time_label,
+                    source_system = excluded.source_system,
+                    source_ref = excluded.source_ref,
+                    event_status = excluded.event_status,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    event_id,
+                    event_family,
+                    event_name,
+                    underlying_symbol.upper(),
+                    proxy_symbol.upper() if proxy_symbol else None,
+                    normalized_event_date,
+                    event_ts_utc,
+                    event_time_label,
+                    source_system,
+                    source_ref,
+                    event_status,
+                ),
+            )
+            conn.commit()
+
+    def bind_snapshot_to_event(
+        self,
+        event_id: str,
+        snapshot_label: str,
+        timing_bucket: str,
+        quote_ts: datetime,
+        ticker: str,
+        rel_trade_days_to_event: int,
+        selection_method: str,
+        *,
+        is_primary: bool = False,
+        selection_tolerance_minutes: int = 30,
+    ) -> None:
+        """Bind an existing chain snapshot timestamp to an event timeline position."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO event_snapshot_binding (
+                    event_id, snapshot_label, timing_bucket, quote_ts, ticker,
+                    rel_trade_days_to_event, is_primary, selection_method,
+                    selection_tolerance_minutes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id, snapshot_label) DO UPDATE SET
+                    timing_bucket = excluded.timing_bucket,
+                    quote_ts = excluded.quote_ts,
+                    ticker = excluded.ticker,
+                    rel_trade_days_to_event = excluded.rel_trade_days_to_event,
+                    is_primary = excluded.is_primary,
+                    selection_method = excluded.selection_method,
+                    selection_tolerance_minutes = excluded.selection_tolerance_minutes
+                """,
+                (
+                    event_id,
+                    snapshot_label,
+                    timing_bucket,
+                    quote_ts,
+                    ticker.upper(),
+                    rel_trade_days_to_event,
+                    int(is_primary),
+                    selection_method,
+                    selection_tolerance_minutes,
+                ),
+            )
+            conn.commit()
+
+    def store_surface_metrics(
+        self,
+        event_id: str,
+        snapshot_label: str,
+        quote_ts: datetime,
+        ticker: str,
+        metrics: dict[str, Any],
+        *,
+        metric_version: str = "v1",
+    ) -> None:
+        """Store derived snapshot-level metrics tied to one event snapshot."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO event_surface_metrics (
+                    event_id, snapshot_label, quote_ts, ticker, spot,
+                    front_expiry, back_expiry, front_dte, back_dte,
+                    atm_iv_front, atm_iv_back, iv_ratio, implied_move_pct,
+                    event_variance_ratio, skew_25d_rr, skew_25d_bf,
+                    gex_proxy, liquidity_score, metric_version
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id, snapshot_label, metric_version) DO UPDATE SET
+                    quote_ts = excluded.quote_ts,
+                    ticker = excluded.ticker,
+                    spot = excluded.spot,
+                    front_expiry = excluded.front_expiry,
+                    back_expiry = excluded.back_expiry,
+                    front_dte = excluded.front_dte,
+                    back_dte = excluded.back_dte,
+                    atm_iv_front = excluded.atm_iv_front,
+                    atm_iv_back = excluded.atm_iv_back,
+                    iv_ratio = excluded.iv_ratio,
+                    implied_move_pct = excluded.implied_move_pct,
+                    event_variance_ratio = excluded.event_variance_ratio,
+                    skew_25d_rr = excluded.skew_25d_rr,
+                    skew_25d_bf = excluded.skew_25d_bf,
+                    gex_proxy = excluded.gex_proxy,
+                    liquidity_score = excluded.liquidity_score
+                """,
+                (
+                    event_id,
+                    snapshot_label,
+                    quote_ts,
+                    ticker.upper(),
+                    metrics["spot"],
+                    _optional_date(metrics.get("front_expiry")),
+                    _optional_date(metrics.get("back_expiry")),
+                    metrics.get("front_dte"),
+                    metrics.get("back_dte"),
+                    metrics.get("atm_iv_front"),
+                    metrics.get("atm_iv_back"),
+                    metrics.get("iv_ratio"),
+                    metrics.get("implied_move_pct"),
+                    metrics.get("event_variance_ratio"),
+                    metrics.get("skew_25d_rr"),
+                    metrics.get("skew_25d_bf"),
+                    metrics.get("gex_proxy"),
+                    metrics.get("liquidity_score"),
+                    metric_version,
+                ),
+            )
+            conn.commit()
+
+    def store_realized_outcome(
+        self,
+        event_id: str,
+        horizon_code: str,
+        pre_snapshot_label: str,
+        post_snapshot_label: str,
+        outcome: dict[str, Any],
+        *,
+        outcome_version: str = "v1",
+    ) -> None:
+        """Store realized move and IV normalization results for one event/horizon."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO event_realized_outcome (
+                    event_id, horizon_code, pre_snapshot_label, post_snapshot_label,
+                    spot_pre, spot_post, realized_move_signed_pct, realized_move_abs_pct,
+                    rv_window_days, realized_vol_pct, iv_front_pre, iv_front_post,
+                    iv_change_abs, iv_change_pct, iv_crush_abs, iv_crush_pct,
+                    outcome_version
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id, horizon_code, outcome_version) DO UPDATE SET
+                    pre_snapshot_label = excluded.pre_snapshot_label,
+                    post_snapshot_label = excluded.post_snapshot_label,
+                    spot_pre = excluded.spot_pre,
+                    spot_post = excluded.spot_post,
+                    realized_move_signed_pct = excluded.realized_move_signed_pct,
+                    realized_move_abs_pct = excluded.realized_move_abs_pct,
+                    rv_window_days = excluded.rv_window_days,
+                    realized_vol_pct = excluded.realized_vol_pct,
+                    iv_front_pre = excluded.iv_front_pre,
+                    iv_front_post = excluded.iv_front_post,
+                    iv_change_abs = excluded.iv_change_abs,
+                    iv_change_pct = excluded.iv_change_pct,
+                    iv_crush_abs = excluded.iv_crush_abs,
+                    iv_crush_pct = excluded.iv_crush_pct
+                """,
+                (
+                    event_id,
+                    horizon_code,
+                    pre_snapshot_label,
+                    post_snapshot_label,
+                    outcome["spot_pre"],
+                    outcome["spot_post"],
+                    outcome["realized_move_signed_pct"],
+                    outcome["realized_move_abs_pct"],
+                    outcome.get("rv_window_days"),
+                    outcome.get("realized_vol_pct"),
+                    outcome.get("iv_front_pre"),
+                    outcome.get("iv_front_post"),
+                    outcome.get("iv_change_abs"),
+                    outcome.get("iv_change_pct"),
+                    outcome.get("iv_crush_abs"),
+                    outcome.get("iv_crush_pct"),
+                    outcome_version,
+                ),
+            )
+            conn.commit()
+
+    def store_structure_replay_outcome(
+        self,
+        event_id: str,
+        structure_code: str,
+        entry_snapshot_label: str,
+        exit_horizon_code: str,
+        replay: dict[str, Any],
+    ) -> None:
+        """Store standardized structure-level replay results for one event/horizon."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO structure_replay_outcome (
+                    event_id, structure_code, entry_snapshot_label, exit_horizon_code,
+                    quantity_scale, assumptions_version, pricing_model_version,
+                    entry_cost, exit_value, realized_pnl, realized_pnl_pct,
+                    max_risk_at_entry, status, status_detail
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(
+                    event_id, structure_code, entry_snapshot_label,
+                    exit_horizon_code, assumptions_version
+                ) DO UPDATE SET
+                    quantity_scale = excluded.quantity_scale,
+                    pricing_model_version = excluded.pricing_model_version,
+                    entry_cost = excluded.entry_cost,
+                    exit_value = excluded.exit_value,
+                    realized_pnl = excluded.realized_pnl,
+                    realized_pnl_pct = excluded.realized_pnl_pct,
+                    max_risk_at_entry = excluded.max_risk_at_entry,
+                    status = excluded.status,
+                    status_detail = excluded.status_detail
+                """,
+                (
+                    event_id,
+                    structure_code,
+                    entry_snapshot_label,
+                    exit_horizon_code,
+                    replay.get("quantity_scale", 1.0),
+                    replay["assumptions_version"],
+                    replay["pricing_model_version"],
+                    replay["entry_cost"],
+                    replay["exit_value"],
+                    replay["realized_pnl"],
+                    replay.get("realized_pnl_pct"),
+                    replay.get("max_risk_at_entry"),
+                    replay.get("status", "ok"),
+                    replay.get("status_detail"),
+                ),
+            )
+            conn.commit()
     
     def query_chain(
         self,
@@ -391,6 +808,30 @@ class OptionsDataStore:
             cursor = conn.execute(query, params)
             return [row[0] for row in cursor.fetchall()]
 
+    def get_event_registry(self, event_id: str | None = None) -> pd.DataFrame:
+        """Return registered events, optionally filtered to one event id."""
+        query = "SELECT * FROM event_registry"
+        params: list[Any] = []
+        if event_id:
+            query += " WHERE event_id = ?"
+            params.append(event_id)
+        query += " ORDER BY event_date, underlying_symbol"
+        with self._get_connection() as conn:
+            return pd.read_sql_query(query, conn, params=params)
+
+    def get_event_snapshot_bindings(self, event_id: str) -> pd.DataFrame:
+        """Return event snapshot bindings ordered by timing and label."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query(
+                """
+                SELECT * FROM event_snapshot_binding
+                WHERE event_id = ?
+                ORDER BY rel_trade_days_to_event, snapshot_label
+                """,
+                conn,
+                params=[event_id],
+            )
+
 
 def create_store(db_path: str | Path = "data/options_intraday.db") -> OptionsDataStore:
     """Factory function to create a data store.
@@ -402,6 +843,22 @@ def create_store(db_path: str | Path = "data/options_intraday.db") -> OptionsDat
         Initialized OptionsDataStore instance
     """
     return OptionsDataStore(db_path)
+
+
+def _normalize_date(value: date | datetime | str) -> date:
+    """Normalize incoming date-like values to `datetime.date`."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return datetime.fromisoformat(value).date()
+
+
+def _optional_date(value: date | datetime | str | None) -> date | None:
+    """Normalize optional date-like values to `datetime.date`."""
+    if value is None:
+        return None
+    return _normalize_date(value)
 
 
 if __name__ == "__main__":
