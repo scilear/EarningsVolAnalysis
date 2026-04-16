@@ -148,6 +148,31 @@
     nvda_earnings_vol/tests/test_event_replay.py
     nvda_earnings_vol/tests/test_option_data_store_extension.py
     nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+- Added a manifest-driven event backfill helper:
+  - `event_option_playbook/backfill.py`
+  - `scripts/backfill_event_history.py`
+  - validates that referenced option snapshots already exist in the store before binding them to
+    an event
+  - registers event rows, snapshot bindings, surface metrics, realized outcomes, and structure
+    replay rows from one JSON manifest
+- Added focused backfill coverage in
+  `nvda_earnings_vol/tests/test_event_backfill.py`
+- Added the first QuantConnect replay scaffold at
+  `research/quantconnect/quantconnect_replay_scaffold.py`:
+  - exports a normalized event dataset from the additive store
+  - includes snapshot labels, realized moves, IV crush, and best replayed structure per event
+  - emits a minimal QC algorithm stub aligned to the selected horizon and assumptions version
+- Added focused QuantConnect scaffold coverage in
+  `nvda_earnings_vol/tests/test_quantconnect_replay_scaffold.py`
+- Validation for the new tranche:
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
+    nvda_earnings_vol/tests/test_event_backfill.py
+    nvda_earnings_vol/tests/test_quantconnect_replay_scaffold.py
+    nvda_earnings_vol/tests/test_earnings_event_workbook.py
+    nvda_earnings_vol/tests/test_macro_event_workbook.py
+    nvda_earnings_vol/tests/test_event_replay.py
+    nvda_earnings_vol/tests/test_option_data_store_extension.py
+    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed (`17 passed`)
 
 ### In Progress
 
@@ -156,10 +181,10 @@
 
 ### Next
 
-1. Add a small example dataset or backfill helper so the earnings and macro workbooks can be
-   demonstrated on non-test data
-2. Reconcile the remaining sidecar outputs for `012` and `014`
-3. Address the Python 3.12 sqlite adapter deprecation warnings in a narrow follow-up
-4. Start the QuantConnect replay scaffold on top of the now-stable event/replay/workbook contracts
+1. Reconcile the remaining sidecar outputs for `012` and `014`
+2. Address the Python 3.12 sqlite adapter deprecation warnings in a narrow follow-up
+3. Add a small real-world event manifest sample so the backfill helper can be demonstrated without
+   hand-authoring JSON from scratch
+4. Extend the QuantConnect scaffold from export/stub mode into a notebook or LEAN research template
 5. Keep the current earnings workflow pinned behind smoke/unit/integration coverage while the
    generic event engine expands
