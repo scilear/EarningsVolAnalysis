@@ -1,5 +1,4 @@
-"""
-Regime-strategy structural alignment scoring.
+"""Regime-strategy structural alignment scoring.
 
 Orthogonal to ranking. Fully deterministic.
 Provides visual heatmap data for report rendering.
@@ -10,6 +9,20 @@ from __future__ import annotations
 from typing import List
 
 import numpy as np
+
+
+def _gamma_preference(gamma_regime: str) -> bool | None:
+    """Map the canonical gamma regime label to desired gamma exposure.
+
+    Returns:
+        `True` for long gamma preference, `False` for short gamma preference,
+        and `None` when the regime is neutral.
+    """
+    if gamma_regime == "Amplified Move Regime":
+        return True
+    if gamma_regime == "Pin Risk Regime":
+        return False
+    return None
 
 
 def _percentile_rank(value: float, population: List[float]) -> float:
@@ -51,7 +64,7 @@ def compute_alignment(strategy: dict, regime: dict, population_stats: dict) -> d
     strategy : dict
         Must contain: net_gamma, net_vega, convexity, cvar (negative number)
     regime : dict
-        Must contain: gamma_bias, vol_regime, composite_regime, confidence
+        Must contain: gamma_regime, vol_regime, composite_regime, confidence
     population_stats : dict
         Must contain: median_abs_gamma, median_abs_vega, convexities (list),
                       cvars (list of negative numbers)
@@ -63,19 +76,18 @@ def compute_alignment(strategy: dict, regime: dict, population_stats: dict) -> d
     """
     
     # ─── Axis 1: Gamma ────────────────────────────────────────────────────
-    gamma_bias = regime.get("gamma_bias", "neutral")
-    desired_long_gamma = (gamma_bias == "long_gamma")
-    desired_short_gamma = (gamma_bias == "short_gamma")
-    
-    if gamma_bias == "neutral":
+    gamma_regime = regime.get("gamma_regime", "Neutral Gamma")
+    gamma_preference = _gamma_preference(gamma_regime)
+
+    if gamma_preference is None:
         gamma_score = 0.5
-    elif desired_long_gamma:
+    elif gamma_preference:
         gamma_score = _scaled_sign(
             strategy.get("net_gamma", 0.0),
             desired_positive=True,
             scale=population_stats.get("median_abs_gamma", 1.0)
         )
-    else:  # desired_short_gamma
+    else:
         gamma_score = _scaled_sign(
             strategy.get("net_gamma", 0.0),
             desired_positive=False,
@@ -161,7 +173,7 @@ def compute_all_alignments(strategies: list, regime: dict) -> None:
     strategies : list of dict
         Each strategy must have: net_gamma, net_vega, convexity, cvar
     regime : dict
-        From classify_regime(), must have gamma_bias, vol_regime, etc.
+        From classify_regime(), must have gamma_regime, vol_regime, etc.
     """
     # Extract population statistics
     gammas = [abs(s.get("net_gamma", 0.0)) for s in strategies]

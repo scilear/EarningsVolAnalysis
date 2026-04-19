@@ -967,15 +967,16 @@ def _load_filtered_chain(
     cache_dir: Path,
     use_cache: bool,
     refresh_cache: bool,
-    ticker: str = config.TICKER,
+    ticker: str | None = None,
     min_oi: int = config.MIN_OI,
     max_spread_pct: float = config.MAX_SPREAD_PCT,
     allow_empty: bool = False,
 ) -> pd.DataFrame | None:
     if expiry is None:
         return None
+    resolved_ticker = (ticker or config.TICKER).upper()
     chain = get_options_chain(
-        ticker,
+        resolved_ticker,
         expiry,
         cache_dir=cache_dir,
         use_cache=use_cache,

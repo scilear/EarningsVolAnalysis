@@ -162,8 +162,10 @@ def build_qc_scaffold(config: QCScaffoldConfig) -> dict[str, Any]:
                 ),
                 "primary_pre_event_snapshot": _primary_snapshot_label(event_bindings),
                 "realized_move_abs_pct": _first_value(event_outcomes, "realized_move_abs_pct"),
+                "realized_move_signed_pct": _first_value(event_outcomes, "realized_move_signed_pct"),
                 "iv_crush_pct": _first_value(event_outcomes, "iv_crush_pct"),
                 "top_structure": _best_structure(event_replays),
+                "structures": _structure_rankings(event_replays),
             }
         )
 
@@ -177,10 +179,11 @@ def build_qc_scaffold(config: QCScaffoldConfig) -> dict[str, Any]:
         },
         "events": events,
         "algorithm_stub": render_algorithm_stub(config),
+        "research_template": render_research_template(config),
         "limitations": [
             "This scaffold exports store-backed event samples; it does not fetch live data.",
             "Replay rows remain dependent on the assumptions_version and horizon_code filters.",
-            "QuantConnect integration still needs custom data plumbing or notebook ingestion.",
+            "QuantConnect integration still needs custom data plumbing or notebook payload ingestion.",
         ],
     }
 
@@ -209,6 +212,58 @@ class EventReplayScaffoldAlgorithm(QCAlgorithm):
 """
 
 
+def render_research_template(config: QCScaffoldConfig) -> str:
+    """Render a QuantConnect Research notebook-style Python template."""
+
+    symbol_hint = config.underlying_symbol or "SPY"
+    family = config.event_family
+    return f"""# QuantConnect Research Template
+# Generated from EarningsVolAnalysis event replay scaffold.
+
+import json
+import pandas as pd
+
+payload_path = "event_replay_payload.json"
+with open(payload_path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+events = pd.DataFrame(payload["events"])
+events
+
+# Suggested QC research bootstrap
+qb = QuantBook()
+symbol = qb.add_equity("{symbol_hint}").symbol
+
+# Example filters aligned to the exported scaffold
+target_family = "{family}"
+target_horizon = "{config.horizon_code}"
+target_assumptions = "{config.assumptions_version}"
+
+events["event_date"] = pd.to_datetime(events["event_date"])
+events = events.sort_values("event_date")
+
+# Quick orientation view
+events[[
+    "event_id",
+    "event_name",
+    "underlying_symbol",
+    "event_date",
+    "realized_move_abs_pct",
+    "iv_crush_pct",
+]]
+
+# Expand structure rankings for cross-event comparison
+structures = pd.json_normalize(
+    [
+        {{"event_id": row["event_id"], **structure}}
+        for row in payload["events"]
+        for structure in row.get("structures", [])
+    ]
+)
+structures
+"""
+
+
 def main() -> None:
     """CLI entry point."""
 
@@ -223,9 +278,9 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument(
         "--format",
-        choices=("json", "stub"),
+        choices=("json", "stub", "research"),
         default="json",
-        help="Emit the export bundle or only the algorithm stub.",
+        help="Emit the export bundle, the LEAN algorithm stub, or the research template.",
     )
     args = parser.parse_args()
 
@@ -242,6 +297,9 @@ def main() -> None:
     scaffold = build_qc_scaffold(config)
     if args.format == "stub":
         print(scaffold["algorithm_stub"])
+        return
+    if args.format == "research":
+        print(scaffold["research_template"])
         return
     print(json.dumps(scaffold, indent=2, sort_keys=True))
 
@@ -291,3 +349,21 @@ def _best_structure(frame: pd.DataFrame) -> dict[str, Any] | None:
             None if pd.isna(ranked["realized_pnl_pct"]) else float(ranked["realized_pnl_pct"])
         ),
     }
+
+
+def _structure_rankings(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    """Return all replayed structures for one event sorted by realized PnL."""
+
+    if frame.empty:
+        return []
+    ordered = frame.sort_values("realized_pnl", ascending=False)
+    return [
+        {
+            "structure_code": str(row["structure_code"]),
+            "realized_pnl": float(row["realized_pnl"]),
+            "realized_pnl_pct": (
+                None if pd.isna(row["realized_pnl_pct"]) else float(row["realized_pnl_pct"])
+            ),
+        }
+        for _, row in ordered.iterrows()
+    ]

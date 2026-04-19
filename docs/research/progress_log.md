@@ -162,6 +162,8 @@
   - exports a normalized event dataset from the additive store
   - includes snapshot labels, realized moves, IV crush, and best replayed structure per event
   - emits a minimal QC algorithm stub aligned to the selected horizon and assumptions version
+  - now also emits a QuantConnect Research notebook-style template for payload ingestion and
+    cross-event structure analysis
 - Added focused QuantConnect scaffold coverage in
   `nvda_earnings_vol/tests/test_quantconnect_replay_scaffold.py`
 - Validation for the new tranche:
@@ -173,6 +175,27 @@
     nvda_earnings_vol/tests/test_event_replay.py
     nvda_earnings_vol/tests/test_option_data_store_extension.py
     nvda_earnings_vol/tests/test_snapshot_bridge.py` passed (`17 passed`)
+- Added a checked-in sample manifest at
+  `research/earnings/sample_event_manifest_nvda_q1.json`
+  - gives the backfill helper one concrete, reproducible example payload
+  - matches the additive event-store contract used by the workbook and replay layers
+- Added a checked-in macro sample manifest at
+  `research/macro/sample_event_manifest_cpi_qqq.json`
+  - gives the macro workbook and backfill path the same kind of concrete example payload
+  - keeps the event-family examples symmetric across earnings and macro research
+- Added a sample-manifest integrity check in
+  `nvda_earnings_vol/tests/test_sample_event_manifest.py`
+- Completed the Python 3.12 sqlite adapter/converter cleanup in
+  `data/option_data_store.py`:
+  - removed reliance on sqlite default date/datetime adapters and converters
+  - switched store writes to explicit ISO serialization for dates and datetimes
+  - added explicit dataframe parsing on event-registry and snapshot-binding reads
+  - preserved the existing public store API
+- Validation for sqlite cleanup:
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
+    nvda_earnings_vol/tests/test_option_data_store_extension.py
+    nvda_earnings_vol/tests/test_quantconnect_replay_scaffold.py` passed (`4 passed`)
+  - Python 3.12 sqlite deprecation warnings were eliminated from this focused slice
 
 ### In Progress
 
@@ -182,9 +205,42 @@
 ### Next
 
 1. Reconcile the remaining sidecar outputs for `012` and `014`
-2. Address the Python 3.12 sqlite adapter deprecation warnings in a narrow follow-up
-3. Add a small real-world event manifest sample so the backfill helper can be demonstrated without
-   hand-authoring JSON from scratch
-4. Extend the QuantConnect scaffold from export/stub mode into a notebook or LEAN research template
-5. Keep the current earnings workflow pinned behind smoke/unit/integration coverage while the
+2. Keep the current earnings workflow pinned behind smoke/unit/integration coverage while the
    generic event engine expands
+
+## 2026-04-19
+
+### Completed
+
+- Reviewed `docs/PRODUCT_ROADMAP.md` and translated it into an execution sequence instead of
+  treating it as a flat wishlist
+- Added the roadmap execution plan at
+  `docs/research/2026-04-19_roadmap_execution_plan.md`
+- Added a focused high-priority task tranche:
+  - `015_bug_gamma_alignment_fix.md`
+  - `016_ticker_agnostic_audit.md`
+  - `017_symmetric_butterfly.md`
+  - `018_capital_normalized_ranking.md`
+  - `019_multi_ticker_batch_mode.md`
+  - `020_earnings_calendar_auto_ingestion.md`
+  - `021_fat_tailed_move_distribution.md`
+  - `022_regression_smoke_harness.md`
+- Updated `tasks/README.md` to include the new task tranche and dependencies
+- Completed Task 015 (`gamma alignment fix`):
+  - fixed the alignment consumer to use canonical `gamma_regime` labels
+  - removed the stale `gamma_bias` expectation in `alignment.py`
+  - added focused regression coverage in `nvda_earnings_vol/tests/test_alignment.py`
+  - validated with `/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python -m pytest
+    /home/fabien/Documents/EarningsVolAnalysis/nvda_earnings_vol/tests/test_alignment.py`
+- Completed the first concrete slice of Task 016 (`ticker-agnostic audit`):
+  - removed the hidden `config.TICKER` fallback from `_load_filtered_chain(...)`
+  - added the audit note at `docs/research/2026-04-19_ticker_agnostic_audit.md`
+  - added non-NVDA main-path regression coverage in
+    `nvda_earnings_vol/tests/test_main_ticker_agnostic.py`
+
+### Next
+
+1. Validate the new non-NVDA regression slice and finish Task 016 if more behavioral coupling is
+   discovered
+2. Implement Task 022 smoke/regression harness
+3. Then move to the first structure/workflow tranche: `017`, `018`, `020`, `019`

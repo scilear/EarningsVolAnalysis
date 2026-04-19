@@ -37,6 +37,14 @@ Do not assume `python` on `PATH` is valid for this repo.
 - `012_dependency_and_env_cleanup.md`
 - `013_test_strategy_for_migration.md`
 - `014_task_discovery_followups.md`
+- `015_bug_gamma_alignment_fix.md`
+- `016_ticker_agnostic_audit.md`
+- `017_symmetric_butterfly.md`
+- `018_capital_normalized_ranking.md`
+- `019_multi_ticker_batch_mode.md`
+- `020_earnings_calendar_auto_ingestion.md`
+- `021_fat_tailed_move_distribution.md`
+- `022_regression_smoke_harness.md`
 
 ## Dependency Summary
 
@@ -49,6 +57,11 @@ Do not assume `python` on `PATH` is valid for this repo.
 - `008` should happen before `009`
 - `012` and `013` can run early in parallel
 - `014` is a meta task that can create new tasks after deeper research
+- `015` should happen before trusting alignment outputs
+- `016` should happen before `019`
+- `017` should happen before finalizing `018`
+- `020` should feed `019`
+- `022` should happen before `021`
 
 ## Recommended Handoff Order
 
@@ -66,6 +79,14 @@ Do not assume `python` on `PATH` is valid for this repo.
 12. `010_quantconnect_replay_scaffold.md`
 13. `011_output_contract_and_reporting_bridge.md`
 14. `014_task_discovery_followups.md`
+15. `015_bug_gamma_alignment_fix.md`
+16. `016_ticker_agnostic_audit.md`
+17. `022_regression_smoke_harness.md`
+18. `017_symmetric_butterfly.md`
+19. `018_capital_normalized_ranking.md`
+20. `020_earnings_calendar_auto_ingestion.md`
+21. `019_multi_ticker_batch_mode.md`
+22. `021_fat_tailed_move_distribution.md`
 
 ## Handoff Rule
 

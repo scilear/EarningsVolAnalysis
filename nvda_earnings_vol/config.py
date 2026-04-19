@@ -1,4 +1,4 @@
-"""Configuration constants for the NVDA earnings vol engine."""
+"""Configuration constants for the earnings vol engine."""
 
 from __future__ import annotations
 

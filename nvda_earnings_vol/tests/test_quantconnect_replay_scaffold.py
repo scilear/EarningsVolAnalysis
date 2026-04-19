@@ -81,4 +81,7 @@ def test_build_qc_scaffold_exports_event_payload_and_stub(tmp_path: Path) -> Non
     assert scaffold["coverage"]["events"] == 1
     assert scaffold["events"][0]["primary_pre_event_snapshot"] == "pre_close_d0"
     assert scaffold["events"][0]["top_structure"]["structure_code"] == "long_straddle_atm"
+    assert scaffold["events"][0]["structures"][0]["structure_code"] == "long_straddle_atm"
     assert 'self.symbol = self.AddEquity("NVDA"' in scaffold["algorithm_stub"]
+    assert 'payload_path = "event_replay_payload.json"' in scaffold["research_template"]
+    assert 'qb = QuantBook()' in scaffold["research_template"]

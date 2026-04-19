@@ -247,7 +247,7 @@ class OptionsDataStore:
     @contextmanager
     def _get_connection(self):
         """Context manager for database connections."""
-        conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+        conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
@@ -316,10 +316,10 @@ class OptionsDataStore:
         df["days_to_expiry"] = (df["expiry"] - pd.Timestamp(timestamp.date())).dt.days
         
         # Now convert expiry to date for storage
-        df["expiry"] = df["expiry"].dt.date
+        df["expiry"] = df["expiry"].dt.strftime("%Y-%m-%d")
         
         # Add metadata
-        df["timestamp"] = timestamp
+        df["timestamp"] = _serialize_datetime(timestamp)
         df["ticker"] = ticker
         df["underlying_price"] = underlying_price
         
@@ -376,7 +376,10 @@ class OptionsDataStore:
                 total_records, 
                 records_inserted, 
                 filtered_count,
-                f"timestamp={timestamp}, expiry_range={df['expiry'].min()} to {df['expiry'].max()}"
+                (
+                    f"timestamp={_serialize_datetime(timestamp)}, "
+                    f"expiry_range={df['expiry'].min()} to {df['expiry'].max()}"
+                )
             ))
             conn.commit()
         
@@ -439,8 +442,8 @@ class OptionsDataStore:
                     event_name,
                     underlying_symbol.upper(),
                     proxy_symbol.upper() if proxy_symbol else None,
-                    normalized_event_date,
-                    event_ts_utc,
+                    _serialize_date(normalized_event_date),
+                    _serialize_datetime(event_ts_utc),
                     event_time_label,
                     source_system,
                     source_ref,
@@ -485,7 +488,7 @@ class OptionsDataStore:
                     event_id,
                     snapshot_label,
                     timing_bucket,
-                    quote_ts,
+                    _serialize_datetime(quote_ts),
                     ticker.upper(),
                     rel_trade_days_to_event,
                     int(is_primary),
@@ -538,11 +541,11 @@ class OptionsDataStore:
                 (
                     event_id,
                     snapshot_label,
-                    quote_ts,
+                    _serialize_datetime(quote_ts),
                     ticker.upper(),
                     metrics["spot"],
-                    _optional_date(metrics.get("front_expiry")),
-                    _optional_date(metrics.get("back_expiry")),
+                    _serialize_date(_optional_date(metrics.get("front_expiry"))),
+                    _serialize_date(_optional_date(metrics.get("back_expiry"))),
                     metrics.get("front_dte"),
                     metrics.get("back_dte"),
                     metrics.get("atm_iv_front"),
@@ -696,17 +699,17 @@ class OptionsDataStore:
         
         if timestamp:
             query += " AND timestamp = ?"
-            params.append(timestamp)
+            params.append(_serialize_datetime(timestamp))
         elif as_of:
             query += " AND timestamp <= ? ORDER BY timestamp DESC LIMIT 1"
-            params.append(as_of)
+            params.append(_serialize_datetime(as_of))
         else:
             query += " AND timestamp = (SELECT MAX(timestamp) FROM option_quotes WHERE ticker = ?)"
             params.append(ticker)
         
         if expiry:
             query += " AND expiry = ?"
-            params.append(expiry.date() if hasattr(expiry, 'date') else expiry)
+            params.append(_serialize_date(_optional_date(expiry)))
         
         if min_quality == "valid":
             query += " AND data_quality = 'valid'"
@@ -765,7 +768,7 @@ class OptionsDataStore:
             params.append(ticker)
         if since:
             query += " AND timestamp >= ?"
-            params.append(since)
+            params.append(_serialize_datetime(since))
         
         query += " ORDER BY timestamp DESC"
         
@@ -800,7 +803,7 @@ class OptionsDataStore:
         
         if since:
             query += " AND expiry >= ?"
-            params.append(since.date() if hasattr(since, 'date') else since)
+            params.append(_serialize_date(_optional_date(since)))
         
         query += " ORDER BY expiry"
         
@@ -817,12 +820,22 @@ class OptionsDataStore:
             params.append(event_id)
         query += " ORDER BY event_date, underlying_symbol"
         with self._get_connection() as conn:
-            return pd.read_sql_query(query, conn, params=params)
+            frame = pd.read_sql_query(query, conn, params=params)
+        if frame.empty:
+            return frame
+        if "event_date" in frame.columns:
+            frame["event_date"] = pd.to_datetime(frame["event_date"]).dt.date
+        if "event_ts_utc" in frame.columns:
+            frame["event_ts_utc"] = pd.to_datetime(frame["event_ts_utc"])
+        for column in ("created_at", "updated_at"):
+            if column in frame.columns:
+                frame[column] = pd.to_datetime(frame[column])
+        return frame
 
     def get_event_snapshot_bindings(self, event_id: str) -> pd.DataFrame:
         """Return event snapshot bindings ordered by timing and label."""
         with self._get_connection() as conn:
-            return pd.read_sql_query(
+            frame = pd.read_sql_query(
                 """
                 SELECT * FROM event_snapshot_binding
                 WHERE event_id = ?
@@ -831,6 +844,13 @@ class OptionsDataStore:
                 conn,
                 params=[event_id],
             )
+        if frame.empty:
+            return frame
+        if "quote_ts" in frame.columns:
+            frame["quote_ts"] = pd.to_datetime(frame["quote_ts"])
+        if "created_at" in frame.columns:
+            frame["created_at"] = pd.to_datetime(frame["created_at"])
+        return frame
 
 
 def create_store(db_path: str | Path = "data/options_intraday.db") -> OptionsDataStore:
@@ -859,6 +879,24 @@ def _optional_date(value: date | datetime | str | None) -> date | None:
     if value is None:
         return None
     return _normalize_date(value)
+
+
+def _serialize_datetime(value: datetime | str | None) -> str | None:
+    """Serialize a datetime-like value to an ISO string for sqlite."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    return value
+
+
+def _serialize_date(value: date | str | None) -> str | None:
+    """Serialize a date-like value to an ISO string for sqlite."""
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
 
 if __name__ == "__main__":
