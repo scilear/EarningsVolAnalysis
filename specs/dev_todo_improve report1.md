@@ -861,7 +861,7 @@ Each regime produces:
 Create a new module:
 
 ```python
-nvda_earnings_vol/regime.py
+event_vol_analysis/regime.py
 ```
 
 ---

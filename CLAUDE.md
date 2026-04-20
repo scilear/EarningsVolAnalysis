@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Run the analysis (live market data):**
 ```sh
-cd nvda_earnings_vol
+cd event_vol_analysis
 python main.py --event-date 2026-02-26 --output reports/nvda_earnings_report.html
 python main.py --use-cache --event-date 2026-02-26   # use cached option chains
 python main.py --refresh-cache --event-date 2026-02-26  # force refresh cache
@@ -31,8 +31,8 @@ python main.py --test-data --test-scenario baseline --save-test-data reports/tes
 **Run tests:**
 ```sh
 pytest                                          # all tests
-pytest nvda_earnings_vol/tests/test_bsm.py     # single file
-pytest nvda_earnings_vol/tests/test_bsm.py::TestClassName::test_func_name  # single test
+pytest event_vol_analysis/tests/test_bsm.py     # single file
+pytest event_vol_analysis/tests/test_bsm.py::TestClassName::test_func_name  # single test
 ```
 
 **Lint:**
@@ -42,12 +42,12 @@ flake8 .
 
 **Install dependencies:**
 ```sh
-pip install -r nvda_earnings_vol/requirements.txt
+pip install -r event_vol_analysis/requirements.txt
 ```
 
 ## Architecture
 
-The package lives entirely under `nvda_earnings_vol/`. `main.py` is the CLI entrypoint and orchestration layer — it wires together all subsystems and writes the HTML report.
+The package lives entirely under `event_vol_analysis/`. `main.py` is the CLI entrypoint and orchestration layer — it wires together all subsystems and writes the HTML report.
 
 **Data layer (`data/`):**
 - `loader.py` — fetches live market data via `yfinance` (spot price, option chains, expiries, price history, earnings dates). Supports CSV caching under `data/cache/` with `--use-cache` / `--refresh-cache` flags.

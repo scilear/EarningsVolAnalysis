@@ -12,7 +12,7 @@ Usage examples
 --------------
 python scripts/regression_smoke_harness.py
 python scripts/regression_smoke_harness.py --verbose --fail-fast
-python scripts/regression_smoke_harness.py --test nvda_earnings_vol/tests/test_alignment.py
+python scripts/regression_smoke_harness.py --test event_vol_analysis/tests/test_alignment.py
 """
 
 from __future__ import annotations
@@ -30,14 +30,14 @@ from typing import Sequence
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_TESTS: tuple[str, ...] = (
-    "nvda_earnings_vol/tests/test_alignment.py",
-    "nvda_earnings_vol/tests/test_main_ticker_agnostic.py",
+    "event_vol_analysis/tests/test_alignment.py",
+    "event_vol_analysis/tests/test_main_ticker_agnostic.py",
     (
-        "nvda_earnings_vol/tests/test_business_invariants.py::"
+        "event_vol_analysis/tests/test_business_invariants.py::"
         "TestEventVarianceRatioBounds"
     ),
     (
-        "nvda_earnings_vol/tests/test_business_invariants.py::"
+        "event_vol_analysis/tests/test_business_invariants.py::"
         "TestBackspreadGateIndependence"
     ),
 )

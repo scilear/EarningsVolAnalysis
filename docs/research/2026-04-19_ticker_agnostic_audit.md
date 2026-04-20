@@ -27,7 +27,7 @@ ticker-relative through market data, calibration, and the CLI `--ticker` path.
 These items are still worth cleaning eventually, but they are not current output-contamination
 sources:
 
-- package name `nvda_earnings_vol`
+- package name `event_vol_analysis`
 - `config.TICKER = "NVDA"` as the CLI default example
 - comments referencing NVDA-derived historical intuition
 

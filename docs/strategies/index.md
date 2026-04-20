@@ -1,7 +1,7 @@
 # Strategies Index
 
 Eight strategies are constructed by `build_strategies()` in
-`nvda_earnings_vol/strategies/structures.py` and evaluated through the full
+`event_vol_analysis/strategies/structures.py` and evaluated through the full
 Monte Carlo / scoring pipeline in `main.py`.
 
 | Strategy | One-liner |

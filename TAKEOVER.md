@@ -15,7 +15,7 @@ Turn the repo into a system that can:
 
 ## Current State
 
-- Existing engine: `nvda_earnings_vol`
+- Existing engine: `event_vol_analysis`
 - Current strength: analytics and strategy prototyping
 - Current weakness: event model, historical replay, and playbook governance
 
@@ -37,7 +37,7 @@ Turn the repo into a system that can:
 - [x] Progress and research tracking created
 - [x] Initial task-file backlog created
 - [x] Generic event-domain package scaffolded
-- [ ] Migration map from `nvda_earnings_vol` to generic event engine
+- [ ] Migration map from `event_vol_analysis` to generic event engine
 
 ### Phase 2. Event abstraction
 

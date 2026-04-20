@@ -22,8 +22,8 @@ Work top to bottom. Do not skip P0 before P1.
 ---
 
 ### TASK 1 — Fix `IV_SCENARIOS` config format
-**File:** `nvda_earnings_vol/config.py`  
-**File:** `nvda_earnings_vol/strategies/payoff.py` (read-only for context)
+**File:** `event_vol_analysis/config.py`  
+**File:** `event_vol_analysis/strategies/payoff.py` (read-only for context)
 
 **Root cause:**  
 `config.py` stores `IV_SCENARIOS` as scalar values (strings/floats).  
@@ -92,7 +92,7 @@ return max(leg_iv * (target_atm / atm_iv), TIME_EPSILON)
 **Test — Part A: Static config structure:**
 ```python
 # In test_strategies.py or a scratch script:
-from nvda_earnings_vol.config import IV_SCENARIOS
+from event_vol_analysis.config import IV_SCENARIOS
 for name, cfg in IV_SCENARIOS.items():
     assert isinstance(cfg, dict), f"{name} must be a dict"
     assert "front" in cfg and "back" in cfg, f"{name} missing front/back keys"
@@ -103,8 +103,8 @@ print("IV_SCENARIOS config OK")
 ```python
 # tests/test_iv_scenarios.py
 import datetime as dt
-from nvda_earnings_vol.strategies.payoff import _post_iv
-from nvda_earnings_vol.config import IV_SCENARIOS
+from event_vol_analysis.strategies.payoff import _post_iv
+from event_vol_analysis.config import IV_SCENARIOS
 
 def test_post_iv_runtime_path():
     """Verify _post_iv() executes without error for all scenarios."""
@@ -149,7 +149,7 @@ def test_post_iv_runtime_path():
 ---
 
 ### TASK 2 — Fix calendar misclassification in `_is_undefined_risk()`
-**File:** `nvda_earnings_vol/strategies/scoring.py`  
+**File:** `event_vol_analysis/strategies/scoring.py`  
 **Function:** `_is_undefined_risk()`
 
 **Root cause:**  
@@ -211,8 +211,8 @@ def _is_undefined_risk(strategy: Strategy) -> bool:
 # Add to tests/test_scoring.py
 
 import pandas as pd
-from nvda_earnings_vol.strategies.structures import OptionLeg, Strategy
-from nvda_earnings_vol.strategies.scoring import _is_undefined_risk
+from event_vol_analysis.strategies.structures import OptionLeg, Strategy
+from event_vol_analysis.strategies.scoring import _is_undefined_risk
 
 front_expiry = pd.Timestamp("2026-03-21")
 back_expiry  = pd.Timestamp("2026-04-18")
@@ -245,7 +245,7 @@ print("_is_undefined_risk tests passed")
 ---
 
 ### TASK 3 — Fix robustness metric (use scenario-EV std, not P&L std)
-**File:** `nvda_earnings_vol/main.py`  
+**File:** `event_vol_analysis/main.py`  
 **Location:** Inside the `for strategy in strategies:` loop
 
 **Root cause:**  
@@ -304,8 +304,8 @@ print("Robustness direction OK")
 ---
 
 ### TASK 4 — Parameterize OTM offset for strangle construction
-**File:** `nvda_earnings_vol/config.py`  
-**File:** `nvda_earnings_vol/strategies/structures.py`
+**File:** `event_vol_analysis/config.py`  
+**File:** `event_vol_analysis/strategies/structures.py`
 
 **Root cause:**  
 Strangle OTM offset hardcoded at 5% (`move = spot * 0.05`).  
@@ -364,7 +364,7 @@ assert otm_put_strike  <= spot * 0.93
 ---
 
 ### TASK 5 — Add explicit 0 DTE guard in `main.py`
-**File:** `nvda_earnings_vol/main.py`  
+**File:** `event_vol_analysis/main.py`  
 **Location:** After `front_expiry` is assigned
 
 **Root cause:**  
@@ -401,7 +401,7 @@ import pytest
 ---
 
 ### TASK 6 — Add GEX dealer assumption note to report output
-**File:** `nvda_earnings_vol/main.py`  
+**File:** `event_vol_analysis/main.py`  
 **Location:** `write_report(...)` call
 
 **Root cause:**  
@@ -429,7 +429,7 @@ Then reference `gex_dealer_note` in your Jinja2 HTML template wherever GEX is di
 ---
 
 ### TASK 7 — Align mild/severe diagnostic threshold with spec
-**File:** `nvda_earnings_vol/analytics/event_vol.py`  
+**File:** `event_vol_analysis/analytics/event_vol.py`  
 **Location:** `event_variance()` function
 
 **Root cause:**  
@@ -459,14 +459,14 @@ if raw_event_var < 0:
 ---
 
 ### TASK 8 — Extract duplicate utilities to `utils.py`
-**Files:** `nvda_earnings_vol/analytics/event_vol.py`, `nvda_earnings_vol/main.py`, `nvda_earnings_vol/analytics/skew.py`
+**Files:** `event_vol_analysis/analytics/event_vol.py`, `event_vol_analysis/main.py`, `event_vol_analysis/analytics/skew.py`
 
 **Root cause:**  
 `_business_days()` is defined in both `event_vol.py` and `main.py`.  
 `_atm_iv()` is defined separately in `event_vol.py` and `skew.py`.  
 If ATM selection logic changes, both copies need updating — maintenance risk.
 
-**Step 1 — Create `nvda_earnings_vol/utils.py`:**
+**Step 1 — Create `event_vol_analysis/utils.py`:**
 ```python
 """Shared utility functions."""
 from __future__ import annotations
@@ -497,13 +497,13 @@ def atm_iv(chain: pd.DataFrame, spot: float) -> float:
 ```python
 # In event_vol.py, skew.py, main.py — remove local _business_days / _atm_iv
 # Replace with:
-from nvda_earnings_vol.utils import business_days, atm_iv
+from event_vol_analysis.utils import business_days, atm_iv
 ```
 
 ---
 
 ### TASK 9 — Remove dead variable in `_entry_cost()`
-**File:** `nvda_earnings_vol/strategies/payoff.py`  
+**File:** `event_vol_analysis/strategies/payoff.py`  
 **Function:** `_entry_cost()`
 
 **Root cause:** `key` is computed but never used — `_get_leg_data()` recomputes it internally. Flake8 will flag F841.
@@ -589,5 +589,5 @@ Add all of the following to `tests/test_event_vol.py`, `tests/test_strategies.py
 | 11. Add all edge case tests (incl. flat term structure) | P2 | tests/ | [ ] |
 
 **Do not mark any P1 item done without running the associated test.**  
-**Run `flake8 nvda_earnings_vol/` after all changes.**  
+**Run `flake8 event_vol_analysis/` after all changes.**  
 **Run `pytest tests/` before pushing.**

@@ -1,0 +1,75 @@
+"""Skew metrics from option chain."""
+
+from __future__ import annotations
+
+import logging
+
+import pandas as pd
+
+from event_vol_analysis.analytics.bsm import delta as option_delta
+from event_vol_analysis.config import DIVIDEND_YIELD, RISK_FREE_RATE
+from event_vol_analysis.utils import atm_iv as calc_atm_iv
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+def skew_metrics(
+    chain: pd.DataFrame,
+    spot: float,
+    t: float,
+    div_yield: float = DIVIDEND_YIELD,
+) -> dict[str, float | None]:
+    """Compute 25d risk reversal and butterfly from chain IVs."""
+    calls = chain[chain["option_type"] == "call"].copy()
+    puts = chain[chain["option_type"] == "put"].copy()
+
+    calls["delta"] = calls.apply(
+        lambda row: option_delta(
+            spot,
+            row["strike"],
+            t,
+            RISK_FREE_RATE,
+            div_yield,
+            row["impliedVolatility"],
+            "call",
+        ),
+        axis=1,
+    )
+    puts["delta"] = puts.apply(
+        lambda row: option_delta(
+            spot,
+            row["strike"],
+            t,
+            RISK_FREE_RATE,
+            div_yield,
+            row["impliedVolatility"],
+            "put",
+        ),
+        axis=1,
+    )
+
+    call_25 = _closest_delta(calls, 0.25)
+    put_25 = _closest_delta(puts, -0.25)
+    try:
+        atm_iv = calc_atm_iv(chain, spot)
+    except ValueError:
+        LOGGER.warning("ATM IV not available for skew metrics.")
+        return {"rr25": None, "bf25": None}
+
+    if call_25 is None or put_25 is None:
+        LOGGER.warning("25d skew strikes not found.")
+        return {"rr25": None, "bf25": None}
+
+    rr25 = call_25 - put_25
+    bf25 = 0.5 * (call_25 + put_25) - atm_iv
+    return {"rr25": rr25, "bf25": bf25}
+
+
+def _closest_delta(frame: pd.DataFrame, target: float) -> float | None:
+    if frame.empty:
+        return None
+    frame = frame.copy()
+    frame["dist"] = (frame["delta"] - target).abs()
+    iv = frame.sort_values("dist").iloc[0]["impliedVolatility"]
+    return float(iv) if pd.notna(iv) else None

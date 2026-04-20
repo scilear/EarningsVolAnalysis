@@ -5,7 +5,7 @@
 ### Completed
 
 - Assessed the existing architecture and confirmed the main pipeline is concentrated in
-  `nvda_earnings_vol/main.py`
+  `event_vol_analysis/main.py`
 - Identified the main blockers to generalization:
   - earnings-first event handling
   - missing event metadata in stored option chains
@@ -30,7 +30,7 @@
 - Confirmed environment state:
   - project-local venv exists at `/home/fabien/Documents/EarningsVolAnalysis/.venv`
   - legacy `venv/` also exists
-  - current dependency file is `nvda_earnings_vol/requirements.txt`
+  - current dependency file is `event_vol_analysis/requirements.txt`
 - Completed the first compatibility bridge slice:
   - added `event_option_playbook.bridge`
   - mapped legacy snapshot -> `EventSpec`
@@ -38,7 +38,7 @@
   - mapped ranked legacy strategies -> `PlaybookCandidate`
   - mapped legacy engine output -> `PlaybookRecommendation`
 - Validated the bridge with focused tests in
-  `nvda_earnings_vol/tests/test_snapshot_bridge.py`
+  `event_vol_analysis/tests/test_snapshot_bridge.py`
 - Completed Task 008 macro taxonomy work:
   - defined the first stable `macro` taxonomy with `cpi`, `payrolls`, and `fomc`
   - mapped each catalyst to a default ETF proxy plus alternates
@@ -71,21 +71,21 @@
   - added generic timing-window validation and serialization round-trip helpers
   - updated bridge construction to emit schema-v1 `EventSpec` via `EventSchedule`
   - verified with `/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python -m pytest
-    /home/fabien/Documents/EarningsVolAnalysis/nvda_earnings_vol/tests/test_snapshot_bridge.py -q`
+    /home/fabien/Documents/EarningsVolAnalysis/event_vol_analysis/tests/test_snapshot_bridge.py -q`
 - Completed Task 002 design deliverables (dataset/outcomes storage model):
   - added `docs/research/architecture/event_dataset_and_outcomes_schema.md`
   - defined additive tables for event metadata, snapshot bindings, horizons, realized outcomes, and
     standardized structure replay PnL
   - documented implementation-first phased rollout and acceptance-criteria query paths
-- Integrated the generic bridge into `nvda_earnings_vol/main.py`:
+- Integrated the generic bridge into `event_vol_analysis/main.py`:
   - legacy runtime now builds `generic_event`
   - legacy runtime now builds `generic_market_context`
   - legacy runtime now builds `generic_playbook`
   - all three are serialized into the existing report context without changing pricing or ranking
     math
 - Runtime validation:
-  - `./.venv/bin/python -m pytest nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
-  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -c 'import nvda_earnings_vol.main'` passed
+  - `./.venv/bin/python -m pytest event_vol_analysis/tests/test_snapshot_bridge.py` passed
+  - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -c 'import event_vol_analysis.main'` passed
   - import produced a non-blocking matplotlib cache warning because the default config directory is
     not writable in the sandbox
 - Implemented the additive SQLite event-storage extension in `data/option_data_store.py`:
@@ -100,11 +100,11 @@
   - added store/query methods for event registration, snapshot bindings, surface metrics,
     realized outcomes, and replay outcomes
 - Added focused storage-extension coverage in
-  `nvda_earnings_vol/tests/test_option_data_store_extension.py`
+  `event_vol_analysis/tests/test_option_data_store_extension.py`
 - Storage validation:
   - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
-    nvda_earnings_vol/tests/test_option_data_store_extension.py
-    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+    event_vol_analysis/tests/test_option_data_store_extension.py
+    event_vol_analysis/tests/test_snapshot_bridge.py` passed
   - current warnings are limited to Python 3.12 sqlite date/datetime adapter deprecations and the
     sandboxed pytest cache write warning
 - Added replay foundation module in `event_option_playbook/replay.py`:
@@ -113,25 +113,25 @@
   - `load_event_replay_context(...)`
   - `replay_selection_summary(...)`
   - explicit snapshot binding and horizon resolution rules
-- Added focused replay coverage in `nvda_earnings_vol/tests/test_event_replay.py`
+- Added focused replay coverage in `event_vol_analysis/tests/test_event_replay.py`
 - Replay validation:
   - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
-    nvda_earnings_vol/tests/test_event_replay.py
-    nvda_earnings_vol/tests/test_option_data_store_extension.py
-    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+    event_vol_analysis/tests/test_event_replay.py
+    event_vol_analysis/tests/test_option_data_store_extension.py
+    event_vol_analysis/tests/test_snapshot_bridge.py` passed
 - Added the first earnings research workbook at
   `research/earnings/earnings_event_workbook.py`:
   - loads the earnings event sample from the additive event store
   - summarizes realized move, IV crush, surface pricing, and standardized structure outcomes
   - emits JSON or markdown output through a reproducible CLI
 - Added focused workbook coverage in
-  `nvda_earnings_vol/tests/test_earnings_event_workbook.py`
+  `event_vol_analysis/tests/test_earnings_event_workbook.py`
 - Workbook validation:
   - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
-    nvda_earnings_vol/tests/test_earnings_event_workbook.py
-    nvda_earnings_vol/tests/test_event_replay.py
-    nvda_earnings_vol/tests/test_option_data_store_extension.py
-    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+    event_vol_analysis/tests/test_earnings_event_workbook.py
+    event_vol_analysis/tests/test_event_replay.py
+    event_vol_analysis/tests/test_option_data_store_extension.py
+    event_vol_analysis/tests/test_snapshot_bridge.py` passed
 - Added the first macro ETF research workbook at
   `research/macro/macro_event_workbook.py`:
   - scopes analysis to one explicit macro catalyst at a time
@@ -140,14 +140,14 @@
     outcomes
   - emits JSON or markdown through a reproducible CLI
 - Added focused macro workbook coverage in
-  `nvda_earnings_vol/tests/test_macro_event_workbook.py`
+  `event_vol_analysis/tests/test_macro_event_workbook.py`
 - Macro workbook validation:
   - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
-    nvda_earnings_vol/tests/test_macro_event_workbook.py
-    nvda_earnings_vol/tests/test_earnings_event_workbook.py
-    nvda_earnings_vol/tests/test_event_replay.py
-    nvda_earnings_vol/tests/test_option_data_store_extension.py
-    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed
+    event_vol_analysis/tests/test_macro_event_workbook.py
+    event_vol_analysis/tests/test_earnings_event_workbook.py
+    event_vol_analysis/tests/test_event_replay.py
+    event_vol_analysis/tests/test_option_data_store_extension.py
+    event_vol_analysis/tests/test_snapshot_bridge.py` passed
 - Added a manifest-driven event backfill helper:
   - `event_option_playbook/backfill.py`
   - `scripts/backfill_event_history.py`
@@ -156,7 +156,7 @@
   - registers event rows, snapshot bindings, surface metrics, realized outcomes, and structure
     replay rows from one JSON manifest
 - Added focused backfill coverage in
-  `nvda_earnings_vol/tests/test_event_backfill.py`
+  `event_vol_analysis/tests/test_event_backfill.py`
 - Added the first QuantConnect replay scaffold at
   `research/quantconnect/quantconnect_replay_scaffold.py`:
   - exports a normalized event dataset from the additive store
@@ -165,16 +165,16 @@
   - now also emits a QuantConnect Research notebook-style template for payload ingestion and
     cross-event structure analysis
 - Added focused QuantConnect scaffold coverage in
-  `nvda_earnings_vol/tests/test_quantconnect_replay_scaffold.py`
+  `event_vol_analysis/tests/test_quantconnect_replay_scaffold.py`
 - Validation for the new tranche:
   - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
-    nvda_earnings_vol/tests/test_event_backfill.py
-    nvda_earnings_vol/tests/test_quantconnect_replay_scaffold.py
-    nvda_earnings_vol/tests/test_earnings_event_workbook.py
-    nvda_earnings_vol/tests/test_macro_event_workbook.py
-    nvda_earnings_vol/tests/test_event_replay.py
-    nvda_earnings_vol/tests/test_option_data_store_extension.py
-    nvda_earnings_vol/tests/test_snapshot_bridge.py` passed (`17 passed`)
+    event_vol_analysis/tests/test_event_backfill.py
+    event_vol_analysis/tests/test_quantconnect_replay_scaffold.py
+    event_vol_analysis/tests/test_earnings_event_workbook.py
+    event_vol_analysis/tests/test_macro_event_workbook.py
+    event_vol_analysis/tests/test_event_replay.py
+    event_vol_analysis/tests/test_option_data_store_extension.py
+    event_vol_analysis/tests/test_snapshot_bridge.py` passed (`17 passed`)
 - Added a checked-in sample manifest at
   `research/earnings/sample_event_manifest_nvda_q1.json`
   - gives the backfill helper one concrete, reproducible example payload
@@ -184,7 +184,7 @@
   - gives the macro workbook and backfill path the same kind of concrete example payload
   - keeps the event-family examples symmetric across earnings and macro research
 - Added a sample-manifest integrity check in
-  `nvda_earnings_vol/tests/test_sample_event_manifest.py`
+  `event_vol_analysis/tests/test_sample_event_manifest.py`
 - Completed the Python 3.12 sqlite adapter/converter cleanup in
   `data/option_data_store.py`:
   - removed reliance on sqlite default date/datetime adapters and converters
@@ -193,8 +193,8 @@
   - preserved the existing public store API
 - Validation for sqlite cleanup:
   - `PYTHONDONTWRITEBYTECODE=1 ./.venv/bin/python -m pytest
-    nvda_earnings_vol/tests/test_option_data_store_extension.py
-    nvda_earnings_vol/tests/test_quantconnect_replay_scaffold.py` passed (`4 passed`)
+    event_vol_analysis/tests/test_option_data_store_extension.py
+    event_vol_analysis/tests/test_quantconnect_replay_scaffold.py` passed (`4 passed`)
   - Python 3.12 sqlite deprecation warnings were eliminated from this focused slice
 
 ### In Progress
@@ -229,14 +229,14 @@
 - Completed Task 015 (`gamma alignment fix`):
   - fixed the alignment consumer to use canonical `gamma_regime` labels
   - removed the stale `gamma_bias` expectation in `alignment.py`
-  - added focused regression coverage in `nvda_earnings_vol/tests/test_alignment.py`
+  - added focused regression coverage in `event_vol_analysis/tests/test_alignment.py`
   - validated with `/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python -m pytest
-    /home/fabien/Documents/EarningsVolAnalysis/nvda_earnings_vol/tests/test_alignment.py`
+    /home/fabien/Documents/EarningsVolAnalysis/event_vol_analysis/tests/test_alignment.py`
 - Completed the first concrete slice of Task 016 (`ticker-agnostic audit`):
   - removed the hidden `config.TICKER` fallback from `_load_filtered_chain(...)`
   - added the audit note at `docs/research/2026-04-19_ticker_agnostic_audit.md`
   - added non-NVDA main-path regression coverage in
-    `nvda_earnings_vol/tests/test_main_ticker_agnostic.py`
+    `event_vol_analysis/tests/test_main_ticker_agnostic.py`
 
 ### Next
 

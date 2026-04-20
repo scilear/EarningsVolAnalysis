@@ -194,7 +194,7 @@ event_variance_ratio = raw_event_var / total_front_var if total_front_var > 0 el
 
 ## 3. NEW MODULE: `regime.py`
 
-Create `nvda_earnings_vol/regime.py`.
+Create `event_vol_analysis/regime.py`.
 
 ### 3.1 Full Implementation
 
@@ -321,7 +321,7 @@ def classify_regime(snapshot: dict) -> dict:
 
 ```python
 # After all diagnostics are computed, before write_report():
-from nvda_earnings_vol.regime import classify_regime
+from event_vol_analysis.regime import classify_regime
 
 snapshot["regime"] = classify_regime(snapshot)
 ```
@@ -330,7 +330,7 @@ snapshot["regime"] = classify_regime(snapshot)
 
 ## 4. NEW MODULE: `alignment.py`
 
-Create `nvda_earnings_vol/alignment.py`.
+Create `event_vol_analysis/alignment.py`.
 
 ### 4.1 Design Rules
 
@@ -498,7 +498,7 @@ def compute_all_alignments(strategies: list, regime: dict) -> None:
 
 ```python
 # After regime classification, after all strategies are scored:
-from nvda_earnings_vol.alignment import compute_all_alignments
+from event_vol_analysis.alignment import compute_all_alignments
 
 compute_all_alignments(ranked_strategies, snapshot["regime"])
 ```

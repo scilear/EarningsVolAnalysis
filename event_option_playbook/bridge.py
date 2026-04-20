@@ -35,7 +35,7 @@ def snapshot_to_event_spec(
         ),
         proxy_symbol=proxy_symbol,
         notes=(
-            "Bridged from nvda_earnings_vol legacy snapshot. "
+            "Bridged from event_vol_analysis legacy snapshot. "
             "Event identity remains earnings-oriented until a generic event loader is added."
         ),
     )

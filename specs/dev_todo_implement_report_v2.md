@@ -7,7 +7,7 @@ Transform the report from "quant summary" to "execution-grade decision document"
 
 ## ✅ COMPLETED
 
-### 1. Core Regime Classification (`nvda_earnings_vol/regime.py`)
+### 1. Core Regime Classification (`event_vol_analysis/regime.py`)
 **Status:** ✅ Implemented
 
 **Contents:**
@@ -17,7 +17,7 @@ Transform the report from "quant summary" to "execution-grade decision document"
 - Heatmap data structure for visual representation
 
 ### 2. Create `alignment.py` Module
-**File:** `nvda_earnings_vol/alignment.py`  
+**File:** `event_vol_analysis/alignment.py`  
 **Status:** ✅ Implemented
 
 **Contents:**
@@ -84,7 +84,7 @@ Transform the report from "quant summary" to "execution-grade decision document"
 ## 📋 REMAINING TASKS
 
 ### 7. Extend `strategies/scoring.py`
-**File:** `nvda_earnings_vol/strategies/scoring.py`  
+**File:** `event_vol_analysis/strategies/scoring.py`  
 **Status:** 📋 Pending
     Returns: {
         "mean_abs_move": float,
@@ -105,7 +105,7 @@ Transform the report from "quant summary" to "execution-grade decision document"
 ---
 
 ### 5. Extend `analytics/gamma.py`
-**File:** `nvda_earnings_vol/analytics/gamma.py`  
+**File:** `event_vol_analysis/analytics/gamma.py`  
 **Status:** 📋 Pending
 
 **New Functions:**
@@ -141,7 +141,7 @@ def top_gamma_strikes(gex_by_strike: dict, n: int = 3) -> list[tuple]:
 ---
 
 ### 6. Extend `strategies/structures.py`
-**File:** `nvda_earnings_vol/strategies/structures.py`  
+**File:** `event_vol_analysis/strategies/structures.py`  
 **Status:** 📋 Pending
 
 **Update Strategy dataclass/return:**
@@ -190,7 +190,7 @@ strategy = {
 ---
 
 ### 7. Extend `strategies/scoring.py`
-**File:** `nvda_earnings_vol/strategies/scoring.py`  
+**File:** `event_vol_analysis/strategies/scoring.py`  
 **Status:** 📋 Pending
 
 **New Function:**
@@ -231,7 +231,7 @@ def decompose_score(strategy: dict, normalization_stats: dict) -> dict:
 ---
 
 ### 8. Extend `reports/reporter.py` Template
-**File:** `nvda_earnings_vol/reports/reporter.py`  
+**File:** `event_vol_analysis/reports/reporter.py`  
 **Status:** 📋 Pending
 
 **New Sections to Add:**
@@ -296,7 +296,7 @@ b = 80                  # constant
 ---
 
 ### 9. Update `main.py` to Wire Everything
-**File:** `nvda_earnings_vol/main.py`  
+**File:** `event_vol_analysis/main.py`  
 **Status:** 📋 Pending
 
 **Integration Steps:**
@@ -321,7 +321,7 @@ snapshot.update({
 
 #### B. After Historical Analysis
 ```python
-from nvda_earnings_vol.analytics.historical import compute_distribution_shape
+from event_vol_analysis.analytics.historical import compute_distribution_shape
 
 dist_shape = compute_distribution_shape(historical_moves)
 snapshot.update(dist_shape)
@@ -341,8 +341,8 @@ snapshot.update({
 
 #### D. Before Report Generation
 ```python
-from nvda_earnings_vol.regime import classify_regime
-from nvda_earnings_vol.alignment import compute_all_alignments
+from event_vol_analysis.regime import classify_regime
+from event_vol_analysis.alignment import compute_all_alignments
 
 # Classify regime
 snapshot["regime"] = classify_regime(snapshot)

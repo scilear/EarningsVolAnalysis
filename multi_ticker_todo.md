@@ -102,9 +102,9 @@ Both derived from the raw (pre-filter) front chain and passed to
 
 ---
 
-## 9. Package name `nvda_earnings_vol`
+## 9. Package name `event_vol_analysis`
 
-The Python package is still named `nvda_earnings_vol/`.  This is purely
+The Python package is still named `event_vol_analysis/`.  This is purely
 cosmetic but worth renaming to something generic (e.g., `earnings_vol`) if
 the tool will be used regularly for multiple tickers.  All internal imports
 use the full dotted path, so a rename requires a global search-and-replace.

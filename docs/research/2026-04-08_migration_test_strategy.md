@@ -63,7 +63,7 @@ Changing interfaces should be checked with contract-shape tests:
 
 Use fixture-based tests for:
 
-- synthetic scenarios from `nvda_earnings_vol/data/test_data.py`
+- synthetic scenarios from `event_vol_analysis/data/test_data.py`
 - legacy snapshots used by bridge tests
 - baseline and post-event reference events
 
@@ -82,8 +82,8 @@ The first regression gate should be runnable with the project-local virtual envi
 
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python -m pytest \
-  nvda_earnings_vol/tests/test_business_invariants.py \
-  nvda_earnings_vol/tests/test_post_event_calendar.py \
-  nvda_earnings_vol/tests/test_snapshot_bridge.py -q
+  event_vol_analysis/tests/test_business_invariants.py \
+  event_vol_analysis/tests/test_post_event_calendar.py \
+  event_vol_analysis/tests/test_snapshot_bridge.py -q
 ```
 

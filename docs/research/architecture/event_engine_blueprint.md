@@ -2,7 +2,7 @@
 
 ## Objective
 
-Introduce a generic event-options engine alongside the current `nvda_earnings_vol` package, then
+Introduce a generic event-options engine alongside the current `event_vol_analysis` package, then
 migrate functionality progressively.
 
 ## Target Layers
@@ -99,7 +99,7 @@ Owns:
 2. Wrap current earnings-specific logic behind generic event interfaces
 3. Add event-aware storage and replay data structures
 4. Move report generation to a playbook schema
-5. Keep `nvda_earnings_vol` as a compatibility workflow until parity exists
+5. Keep `event_vol_analysis` as a compatibility workflow until parity exists
 
 ## Non-Goals For The First Slice
 

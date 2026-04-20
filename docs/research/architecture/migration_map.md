@@ -2,7 +2,7 @@
 
 ## Goal
 
-Move from `nvda_earnings_vol` to a generic event engine in additive steps.
+Move from `event_vol_analysis` to a generic event engine in additive steps.
 
 ## Step 1. Domain vocabulary
 
@@ -26,7 +26,7 @@ Status:
 
 ## Step 2. Compatibility bridge
 
-Add a bridge layer that converts the current `nvda_earnings_vol` snapshot into:
+Add a bridge layer that converts the current `event_vol_analysis` snapshot into:
 
 - `EventSpec`
 - `MarketContext`
@@ -88,5 +88,5 @@ Acceptance target:
 
 ## Immediate Next Coding Step
 
-Build the compatibility bridge from the existing snapshot dictionary in `nvda_earnings_vol/main.py`
+Build the compatibility bridge from the existing snapshot dictionary in `event_vol_analysis/main.py`
 into the new generic domain objects.
