@@ -6,6 +6,12 @@ TICKER: str = "NVDA"
 HISTORY_YEARS: int = 5
 MC_SIMULATIONS: int = 100_000
 
+# Fat-tail simulation controls
+FAT_TAILS_ENABLED: bool = True
+FAT_TAIL_MIN_DF: float = 5.0
+FAT_TAIL_MAX_DF: float = 100.0
+FAT_TAIL_MAX_EXCESS_KURTOSIS: float = 6.0
+
 # Strike filtering
 MONEYNESS_LOW: float = 0.80
 MONEYNESS_HIGH: float = 1.20
@@ -27,8 +33,8 @@ HOLD_TO_EXPIRY: bool = False
 # ── Back3 expiry selection ─────────────────────────────────────────────────
 # Shared by data loader + all strategies that use a back3 leg.
 # Change here once; applies everywhere.
-BACK3_DTE_MIN: int = 21   # minimum DTE for back3 expiry selection
-BACK3_DTE_MAX: int = 45   # maximum DTE for back3 expiry selection
+BACK3_DTE_MIN: int = 21  # minimum DTE for back3 expiry selection
+BACK3_DTE_MAX: int = 45  # maximum DTE for back3 expiry selection
 
 # ── Calendar ──────────────────────────────────────────────────────────────
 CALENDAR_PREFERRED_BACK: str = "back3"
@@ -38,17 +44,17 @@ CALENDAR_BACK3_POST_EVENT_IV_FACTOR: float = 0.92
 CALENDAR_BACK1_POST_EVENT_IV_FACTOR: float = 0.85
 
 # ── Backspreads ────────────────────────────────────────────────────────────
-BACKSPREAD_RATIO: tuple[int, int] = (1, 2)   # sell 1, buy 2
+BACKSPREAD_RATIO: tuple[int, int] = (1, 2)  # sell 1, buy 2
 BACKSPREAD_MAX_DEBIT_FRACTION: float = 0.15
 BACKSPREAD_MIN_WING_WIDTH_PCT: float = 0.014  # min strike distance (% of spot)
 # Aliases — keep in sync with BACK3_DTE_MIN/MAX (single source of truth).
 BACKSPREAD_LONG_DTE_MIN: int = BACK3_DTE_MIN
 BACKSPREAD_LONG_DTE_MAX: int = BACK3_DTE_MAX
 BACKSPREAD_POST_EVENT_IV_FACTOR: float = 0.85
-BACKSPREAD_MIN_IV_RATIO: float = 1.40        # front_iv / back_iv gate
+BACKSPREAD_MIN_IV_RATIO: float = 1.40  # front_iv / back_iv gate
 BACKSPREAD_MIN_EVENT_VAR_RATIO: float = 0.50  # event dominance gate
 BACKSPREAD_MAX_IMPLIED_OVER_P75: float = 0.90  # not overpriced gate
-BACKSPREAD_MIN_SHORT_DELTA: float = 0.08     # short leg must have premium
+BACKSPREAD_MIN_SHORT_DELTA: float = 0.08  # short leg must have premium
 
 # ── IV compression factors: two different contexts ─────────────────────────
 # CALENDAR_BACK3_POST_EVENT_IV_FACTOR = 0.92

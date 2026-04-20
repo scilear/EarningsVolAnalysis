@@ -5,8 +5,10 @@ import pandas as pd
 
 from nvda_earnings_vol.config import CONVEXITY_CAP
 from nvda_earnings_vol.strategies.scoring import (
+    _capital_normalized_ev,
     _is_undefined_risk,
     compute_metrics,
+    score_strategies,
 )
 from nvda_earnings_vol.strategies.structures import OptionLeg, Strategy
 
@@ -77,6 +79,17 @@ def test_undefined_risk_calendar_and_condor() -> None:
     )
     assert not _is_undefined_risk(condor)
 
+    butterfly = Strategy(
+        name="symmetric_butterfly",
+        legs=(
+            OptionLeg("call", 780.0, 1, "buy", front_expiry),
+            OptionLeg("call", 800.0, 1, "sell", front_expiry),
+            OptionLeg("call", 800.0, 1, "sell", front_expiry),
+            OptionLeg("call", 820.0, 1, "buy", front_expiry),
+        ),
+    )
+    assert not _is_undefined_risk(butterfly)
+
 
 def test_convexity_cap_on_near_zero_bottom() -> None:
     pnls = np.array([0.0] * 90 + [10.0] * 10)
@@ -111,3 +124,52 @@ def test_robustness_direction() -> None:
         robustness_override=robust_stable,
     )
     assert metrics["robustness"] == robust_stable
+
+
+def test_capital_normalized_ev_metric_in_compute_metrics() -> None:
+    strategy = Strategy(
+        name="test",
+        legs=(OptionLeg("call", 100.0, 1, "buy", pd.Timestamp("2030-01-01")),),
+    )
+    pnls = np.array([0.0, 100.0, 200.0])
+    metrics = compute_metrics(
+        strategy,
+        pnls,
+        0.05,
+        0.04,
+        100.0,
+        robustness_override=1.0,
+        capital={"capital_required": 250.0, "capital_efficiency": 0.4},
+    )
+    assert metrics["ev"] == 100.0
+    assert metrics["capital_required"] == 250.0
+    assert metrics["capital_normalized_ev"] == 0.4
+
+
+def test_capital_normalized_ev_prefers_better_return_per_capital() -> None:
+    high_return = {
+        "strategy": "high_return",
+        "ev": 150.0,
+        "capital_required": 300.0,
+        "convexity": 2.0,
+        "cvar": -100.0,
+        "robustness": 1.0,
+        "risk_classification": "defined_risk",
+    }
+    low_return = {
+        "strategy": "low_return",
+        "ev": 180.0,
+        "capital_required": 900.0,
+        "convexity": 2.0,
+        "cvar": -100.0,
+        "robustness": 1.0,
+        "risk_classification": "defined_risk",
+    }
+    ranked = score_strategies([high_return, low_return])
+    assert ranked[0]["strategy"] == "high_return"
+    assert ranked[0]["capital_normalized_ev"] > ranked[1]["capital_normalized_ev"]
+
+
+def test_capital_normalized_ev_fallback_on_invalid_capital() -> None:
+    item = {"ev": 50.0, "capital_required": 0.0, "max_loss": -200.0}
+    assert _capital_normalized_ev(item) == 0.25

@@ -19,7 +19,7 @@ class OptionLeg:
     qty: int
     side: str  # "buy" or "sell"
     expiry: pd.Timestamp
-    
+
     # Optional fields for detailed reporting
     entry_price: float | None = None
     iv: float | None = None
@@ -27,7 +27,7 @@ class OptionLeg:
     gamma: float | None = None
     vega: float | None = None
     theta: float | None = None
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert leg to dictionary for report serialization."""
         return {
@@ -51,70 +51,72 @@ class Strategy:
 
     name: str
     legs: tuple[OptionLeg, ...]
-    
+
     # Risk metrics (populated during scoring)
     net_delta: float = field(default=0.0, compare=False)
     net_gamma: float = field(default=0.0, compare=False)
     net_vega: float = field(default=0.0, compare=False)
     net_theta: float = field(default=0.0, compare=False)
-    
+
     # Breakevens
     lower_breakeven: float | None = field(default=None, compare=False)
     upper_breakeven: float | None = field(default=None, compare=False)
-    
+
     # Capital at risk
     max_loss: float = field(default=0.0, compare=False)
     max_gain: float = field(default=0.0, compare=False)
     capital_required: float = field(default=0.0, compare=False)
     capital_efficiency: float = field(default=0.0, compare=False)
-    
+
     def is_defined_risk(self) -> bool:
         """Return True if this is a defined risk strategy."""
         # Short strategies with uncovered legs are undefined
         has_short_call = any(
-            leg.option_type == "call" and leg.side == "sell"
-            for leg in self.legs
+            leg.option_type == "call" and leg.side == "sell" for leg in self.legs
         )
         has_short_put = any(
-            leg.option_type == "put" and leg.side == "sell"
-            for leg in self.legs
+            leg.option_type == "put" and leg.side == "sell" for leg in self.legs
         )
-        
+
         # If no shorts, it's defined risk
         if not has_short_call and not has_short_put:
             return True
-        
+
         # Check for covered positions
         long_call_strikes = [
-            leg.strike for leg in self.legs
+            leg.strike
+            for leg in self.legs
             if leg.option_type == "call" and leg.side == "buy"
         ]
         short_call_strikes = [
-            leg.strike for leg in self.legs
+            leg.strike
+            for leg in self.legs
             if leg.option_type == "call" and leg.side == "sell"
         ]
-        
+
         long_put_strikes = [
-            leg.strike for leg in self.legs
+            leg.strike
+            for leg in self.legs
             if leg.option_type == "put" and leg.side == "buy"
         ]
         short_put_strikes = [
-            leg.strike for leg in self.legs
+            leg.strike
+            for leg in self.legs
             if leg.option_type == "put" and leg.side == "sell"
         ]
-        
+
         # Short calls must be covered by long calls at higher strikes
         for short_strike in short_call_strikes:
             cover = sum(1 for s in long_call_strikes if s >= short_strike)
             if cover == 0:
                 return False
-        
+
         # Short puts must be covered by long puts at lower strikes
         for short_strike in short_put_strikes:
             cover = sum(1 for s in long_put_strikes if s <= short_strike)
             if cover == 0:
                 return False
-        
+
         return True
 
 
@@ -140,7 +142,7 @@ def build_strategies(
     front_expiry = front_chain["expiry"].iloc[0]
     back_expiry = back_chain["expiry"].iloc[0]
 
-    return [
+    strategies = [
         Strategy(
             name="long_call",
             legs=(OptionLeg("call", atm_strike, 1, "buy", front_expiry),),
@@ -194,6 +196,67 @@ def build_strategies(
             ),
         ),
     ]
+
+    butterfly = _build_symmetric_call_butterfly(
+        front_chain,
+        spot,
+        front_expiry,
+    )
+    if butterfly is not None:
+        strategies.append(butterfly)
+
+    return strategies
+
+
+def _build_symmetric_call_butterfly(
+    chain: pd.DataFrame,
+    spot: float,
+    expiry: pd.Timestamp,
+) -> Strategy | None:
+    """Build a symmetric 1-2-1 call butterfly centered near spot."""
+    calls = chain[chain["option_type"] == "call"]
+    strikes = sorted(float(x) for x in calls["strike"].dropna().unique())
+    if len(strikes) < 3:
+        return None
+
+    middle = _nearest_strike(chain, spot, option_type="call")
+    lower_candidates = [strike for strike in strikes if strike < middle]
+    upper_candidates = [strike for strike in strikes if strike > middle]
+    if not lower_candidates or not upper_candidates:
+        return None
+
+    best_lower = None
+    best_upper = None
+    best_key = None
+    for lower in lower_candidates:
+        target_upper = middle + (middle - lower)
+        upper = min(
+            upper_candidates,
+            key=lambda strike: abs(strike - target_upper),
+        )
+        lower_width = middle - lower
+        upper_width = upper - middle
+        key = (
+            abs(upper_width - lower_width),
+            lower_width + upper_width,
+        )
+        if best_key is None or key < best_key:
+            best_key = key
+            best_lower = lower
+            best_upper = upper
+
+    if best_lower is None or best_upper is None:
+        return None
+
+    return Strategy(
+        name="symmetric_butterfly",
+        legs=(
+            OptionLeg("call", best_lower, 1, "buy", expiry),
+            OptionLeg("call", middle, 1, "sell", expiry),
+            OptionLeg("call", middle, 1, "sell", expiry),
+            OptionLeg("call", best_upper, 1, "buy", expiry),
+        ),
+    )
 
 
 def _nearest_strike(

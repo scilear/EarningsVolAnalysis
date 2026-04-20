@@ -1,6 +1,8 @@
 """Generic event-based options playbook domain package."""
 
 from event_option_playbook.backfill import (
+    auto_ingest_earnings_calendar,
+    auto_ingest_earnings_calendar_db,
     backfill_event_manifest,
     backfill_event_records,
     build_event_id,
@@ -49,6 +51,8 @@ __all__ = [
     "PlaybookRecommendation",
     "PlaybookRiskNote",
     "ReplayAssumptions",
+    "auto_ingest_earnings_calendar",
+    "auto_ingest_earnings_calendar_db",
     "backfill_event_manifest",
     "backfill_event_records",
     "build_event_id",

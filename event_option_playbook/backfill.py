@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+
+import yfinance as yf
 
 from data.option_data_store import OptionsDataStore, create_store
 
@@ -33,7 +35,9 @@ def load_event_manifest(manifest_path: str | Path) -> list[dict[str, Any]]:
     else:
         events = payload
     if not isinstance(events, list):
-        raise ValueError("Manifest must be a list of events or an object with an 'events' list.")
+        raise ValueError(
+            "Manifest must be a list of events or an object with an 'events' list."
+        )
     return events
 
 
@@ -46,6 +50,103 @@ def backfill_event_manifest(
 
     store = create_store(db_path)
     return backfill_event_records(store, load_event_manifest(manifest_path))
+
+
+def auto_ingest_earnings_calendar_db(
+    tickers: list[str],
+    *,
+    db_path: str = "data/options_intraday.db",
+    limit: int = 8,
+    on_or_after: date | None = None,
+) -> dict[str, Any]:
+    """Fetch upcoming earnings dates and upsert them into event_registry."""
+
+    store = create_store(db_path)
+    return auto_ingest_earnings_calendar(
+        store,
+        tickers,
+        limit=limit,
+        on_or_after=on_or_after,
+    )
+
+
+def auto_ingest_earnings_calendar(
+    store: OptionsDataStore,
+    tickers: list[str],
+    *,
+    limit: int = 8,
+    on_or_after: date | None = None,
+) -> dict[str, Any]:
+    """Fetch upcoming earnings dates and upsert them into event_registry."""
+
+    normalized_tickers = sorted(
+        {str(ticker).upper() for ticker in tickers if str(ticker).strip()}
+    )
+    cutoff = on_or_after or date.today()
+    summary: dict[str, Any] = {
+        "tickers_requested": len(normalized_tickers),
+        "tickers_processed": 0,
+        "events_created": 0,
+        "events_updated": 0,
+        "events_skipped_past": 0,
+        "fetch_errors": [],
+        "event_ids": [],
+    }
+
+    for ticker in normalized_tickers:
+        try:
+            earnings = yf.Ticker(ticker).get_earnings_dates(limit=limit)
+        except Exception as exc:
+            summary["fetch_errors"].append({"ticker": ticker, "error": str(exc)})
+            continue
+
+        summary["tickers_processed"] += 1
+        if earnings is None or len(getattr(earnings, "index", [])) == 0:
+            continue
+
+        seen_dates: set[date] = set()
+        for raw_ts in earnings.index:
+            event_date = _coerce_event_date(raw_ts)
+            if event_date is None:
+                continue
+            if event_date in seen_dates:
+                continue
+            seen_dates.add(event_date)
+
+            if event_date < cutoff:
+                summary["events_skipped_past"] += 1
+                continue
+
+            event_date_str = event_date.isoformat()
+            event_name = f"{ticker.lower()}_earnings_{event_date_str}"
+            event_id = build_event_id(
+                event_family="earnings",
+                event_name=event_name,
+                underlying_symbol=ticker,
+                event_date=event_date_str,
+            )
+            existing = not store.get_event_registry(event_id).empty
+
+            store.register_event(
+                event_id=event_id,
+                event_family="earnings",
+                event_name=event_name,
+                underlying_symbol=ticker,
+                event_date=event_date,
+                event_ts_utc=_coerce_event_timestamp(raw_ts),
+                event_time_label=None,
+                source_system="yfinance-earnings-calendar",
+                source_ref=f"yfinance:get_earnings_dates:{ticker}:{limit}",
+                event_status="scheduled",
+            )
+
+            summary["event_ids"].append(event_id)
+            if existing:
+                summary["events_updated"] += 1
+            else:
+                summary["events_created"] += 1
+
+    return summary
 
 
 def backfill_event_records(
@@ -175,3 +276,40 @@ def _optional_datetime(value: Any) -> datetime | None:
     if isinstance(value, str):
         return datetime.fromisoformat(value)
     raise TypeError(f"Unsupported datetime value: {value!r}")
+
+
+def _coerce_event_date(value: Any) -> date | None:
+    """Coerce one date-like earnings index value to datetime.date."""
+
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value).date()
+    if hasattr(value, "to_pydatetime"):
+        return value.to_pydatetime().date()
+    return None
+
+
+def _coerce_event_timestamp(value: Any) -> datetime | None:
+    """Coerce one earnings index value to datetime, if meaningful."""
+
+    timestamp: datetime | None
+    if isinstance(value, datetime):
+        timestamp = value
+    elif isinstance(value, str):
+        timestamp = datetime.fromisoformat(value)
+    elif hasattr(value, "to_pydatetime"):
+        timestamp = value.to_pydatetime()
+    else:
+        return None
+
+    if (
+        timestamp.hour == 0
+        and timestamp.minute == 0
+        and timestamp.second == 0
+        and timestamp.microsecond == 0
+    ):
+        return None
+    return timestamp

@@ -19,6 +19,15 @@ echo "=== NVDA Earnings Vol Analysis - Test Scenario Runner ==="
 echo "Output directory: ${OUTPUT_DIR}"
 echo ""
 
+# Preflight smoke test to validate trust-critical behavior before running scenarios
+echo "=== Preflight: Running regression smoke test ==="
+if ! "${PYTHON}" scripts/regression_smoke_harness.py; then
+    echo "ERROR: Preflight smoke test failed. Aborting scenario run."
+    exit 1
+fi
+echo "Preflight smoke test passed."
+echo ""
+
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
 

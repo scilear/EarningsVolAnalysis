@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -121,6 +124,12 @@ STRATEGY_RATIONALE: dict[str, str] = {
         "inside the break-even range. Best when vol is expensive relative "
         "to expected move and a muted earnings reaction is likely."
     ),
+    "SYMMETRIC_BUTTERFLY": (
+        "Defined-risk short-volatility structure: long one lower-strike call, "
+        "short two ATM calls, and long one higher-strike call with symmetric "
+        "wings. Profits most if spot settles near the body strike and limits "
+        "losses to the net debit paid."
+    ),
     "CALENDAR": (
         "Long time-value, short event vol. Sells near-term vol (expensive "
         "pre-earnings) and buys post-event vol (relatively cheaper). "
@@ -186,25 +195,13 @@ def _enrich_legs_with_greeks(
         t = t_front if is_front else t_back1
         key = (leg_expiry, leg["option_type"], float(leg["strike"]))
         chain_data = lookup.get(key)
-        iv = (
-            chain_data["iv"]
-            if chain_data
-            else (front_iv if is_front else back_iv)
-        )
+        iv = chain_data["iv"] if chain_data else (front_iv if is_front else back_iv)
         leg["iv"] = iv
 
-        d = bsm_delta(
-            spot, leg["strike"], t, r, q, iv, leg["option_type"]
-        )
-        g = bsm_gamma(
-            spot, leg["strike"], t, r, q, iv, leg["option_type"]
-        )
-        v = bsm_vega(
-            spot, leg["strike"], t, r, q, iv, leg["option_type"]
-        )
-        th = bsm_theta(
-            spot, leg["strike"], t, r, q, iv, leg["option_type"]
-        )
+        d = bsm_delta(spot, leg["strike"], t, r, q, iv, leg["option_type"])
+        g = bsm_gamma(spot, leg["strike"], t, r, q, iv, leg["option_type"])
+        v = bsm_vega(spot, leg["strike"], t, r, q, iv, leg["option_type"])
+        th = bsm_theta(spot, leg["strike"], t, r, q, iv, leg["option_type"])
         leg["delta"] = d
         leg["gamma"] = g
         leg["vega"] = v
@@ -220,15 +217,13 @@ def _enrich_legs_with_greeks(
 
 
 def _not_applicable_reason(name: str, snapshot: dict) -> str:
-    """Return a human-readable reason why a conditional strategy was skipped.
-    """
+    """Return a human-readable reason why a conditional strategy was skipped."""
     if name in ("CALL_BACKSPREAD", "PUT_BACKSPREAD"):
         reasons = []
         iv_ratio = snapshot.get("iv_ratio", 0.0)
         if iv_ratio < config.BACKSPREAD_MIN_IV_RATIO:
             reasons.append(
-                f"IV ratio {iv_ratio:.2f} < "
-                f"{config.BACKSPREAD_MIN_IV_RATIO} required"
+                f"IV ratio {iv_ratio:.2f} < {config.BACKSPREAD_MIN_IV_RATIO} required"
             )
         evr = snapshot.get("event_variance_ratio", 0.0)
         if evr < config.BACKSPREAD_MIN_EVENT_VAR_RATIO:
@@ -247,14 +242,11 @@ def _not_applicable_reason(name: str, snapshot: dict) -> str:
         sd = snapshot.get("short_delta", 0.0)
         if sd < config.BACKSPREAD_MIN_SHORT_DELTA:
             reasons.append(
-                f"short delta {sd:.3f} < "
-                f"{config.BACKSPREAD_MIN_SHORT_DELTA} required"
+                f"short delta {sd:.3f} < {config.BACKSPREAD_MIN_SHORT_DELTA} required"
             )
         dte = snapshot.get("back_dte", 0)
         if not (
-            config.BACKSPREAD_LONG_DTE_MIN
-            <= dte
-            <= config.BACKSPREAD_LONG_DTE_MAX
+            config.BACKSPREAD_LONG_DTE_MIN <= dte <= config.BACKSPREAD_LONG_DTE_MAX
         ):
             reasons.append(
                 f"back DTE {dte}d outside "
@@ -265,24 +257,133 @@ def _not_applicable_reason(name: str, snapshot: dict) -> str:
     if name == "POST_EVENT_CALENDAR":
         days = snapshot.get("days_after_event", 0)
         if days == 0:
-            return (
-                "Entry requires 1–3 days after earnings event "
-                "(currently pre-event)"
-            )
-        return (
-            f"{days}d after event exceeds the 3-day entry window"
-        )
+            return "Entry requires 1–3 days after earnings event (currently pre-event)"
+        return f"{days}d after event exceeds the 3-day entry window"
     return "Entry conditions not met"
+
+
+def _load_tickers_from_file(file_path: str) -> list[str]:
+    """Load ticker symbols from a comma/newline separated file."""
+    path = Path(file_path)
+    if not path.exists():
+        raise ValueError(f"Ticker file not found: {file_path}")
+
+    content = path.read_text(encoding="utf-8")
+    tokens = content.replace("\n", ",").split(",")
+    tickers = [token.strip().upper() for token in tokens if token.strip()]
+    unique_tickers = list(dict.fromkeys(tickers))
+    if not unique_tickers:
+        raise ValueError(f"No valid tickers found in {file_path}")
+    return unique_tickers
+
+
+def _batch_command_for_ticker(
+    args: argparse.Namespace,
+    ticker: str,
+    output_path: Path,
+) -> list[str]:
+    """Build batch subprocess command for one ticker run."""
+    command = [
+        sys.executable,
+        "-m",
+        "nvda_earnings_vol.main",
+        "--ticker",
+        ticker,
+        "--output",
+        str(output_path),
+        "--cache-dir",
+        args.cache_dir,
+    ]
+
+    if args.event_date:
+        command.extend(["--event-date", args.event_date])
+    if args.use_cache:
+        command.append("--use-cache")
+    if args.refresh_cache:
+        command.append("--refresh-cache")
+    if args.seed is not None:
+        command.extend(["--seed", str(args.seed)])
+    if args.test_data:
+        command.append("--test-data")
+    if args.test_scenario:
+        command.extend(["--test-scenario", args.test_scenario])
+    if args.test_data_dir:
+        command.extend(["--test-data-dir", args.test_data_dir])
+    if args.save_test_data:
+        command.extend(["--save-test-data", args.save_test_data])
+    return command
+
+
+def _run_batch_mode(args: argparse.Namespace, tickers: list[str]) -> bool:
+    """Run the full analysis once per ticker and write a batch summary."""
+    output_dir = Path(args.batch_output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    summary: dict[str, object] = {
+        "tickers_requested": len(tickers),
+        "tickers_succeeded": 0,
+        "tickers_failed": 0,
+        "results": [],
+    }
+
+    for ticker in tickers:
+        output_path = output_dir / f"{ticker.lower()}_earnings_report.html"
+        command = _batch_command_for_ticker(args, ticker, output_path)
+        LOGGER.info("Batch run for %s -> %s", ticker, output_path)
+        result = subprocess.run(command, check=False)
+
+        ok = result.returncode == 0
+        if ok:
+            summary["tickers_succeeded"] += 1
+        else:
+            summary["tickers_failed"] += 1
+        summary["results"].append(
+            {
+                "ticker": ticker,
+                "output": str(output_path),
+                "returncode": int(result.returncode),
+                "ok": ok,
+            }
+        )
+
+    if args.batch_summary_json:
+        summary_path = Path(args.batch_summary_json)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(summary, indent=2),
+            encoding="utf-8",
+        )
+        LOGGER.info("Batch summary written to %s", summary_path)
+
+    LOGGER.info(
+        "Batch complete: %d succeeded, %d failed",
+        summary["tickers_succeeded"],
+        summary["tickers_failed"],
+    )
+    return bool(summary["tickers_failed"] == 0)
 
 
 def main() -> None:
     """Run earnings vol analysis pipeline."""
     parser = argparse.ArgumentParser(description="Earnings vol analysis")
-    parser.add_argument(
+    ticker_group = parser.add_mutually_exclusive_group()
+    ticker_group.add_argument(
         "--ticker",
         type=str,
         default=config.TICKER,
         help="Underlying ticker symbol (default: %(default)s)",
+    )
+    ticker_group.add_argument(
+        "--tickers",
+        nargs="+",
+        default=None,
+        help="Run in batch mode for explicit ticker list",
+    )
+    ticker_group.add_argument(
+        "--ticker-file",
+        type=str,
+        default=None,
+        help="Run in batch mode from comma/newline ticker file",
     )
     parser.add_argument("--event-date", type=str, help="YYYY-MM-DD")
     parser.add_argument(
@@ -290,8 +391,7 @@ def main() -> None:
         type=str,
         default=None,
         help=(
-            "Output HTML report path "
-            "(default: reports/<ticker>_earnings_report.html)"
+            "Output HTML report path (default: reports/<ticker>_earnings_report.html)"
         ),
     )
     parser.add_argument(
@@ -340,18 +440,50 @@ def main() -> None:
         default=None,
         help="Save generated test data to specified directory",
     )
+    parser.add_argument(
+        "--batch-output-dir",
+        type=str,
+        default="reports/batch",
+        help="Directory for per-ticker reports in batch mode",
+    )
+    parser.add_argument(
+        "--batch-summary-json",
+        type=str,
+        default=None,
+        help="Optional JSON summary output path for batch runs",
+    )
     args = parser.parse_args()
-    ticker = args.ticker.upper()
+
+    batch_requested = args.tickers is not None or args.ticker_file is not None
+    if batch_requested:
+        if args.ticker_file:
+            tickers = _load_tickers_from_file(args.ticker_file)
+        else:
+            tickers = [ticker.upper() for ticker in args.tickers if ticker]
+            tickers = list(dict.fromkeys(tickers))
+        if not tickers:
+            raise ValueError("No valid tickers provided for batch mode.")
+    else:
+        tickers = [args.ticker.upper()]
+    ticker = tickers[0]
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(levelname)s: %(message)s",
     )
 
+    if batch_requested:
+        if args.output is not None:
+            LOGGER.warning(
+                "--output is ignored in batch mode; using --batch-output-dir"
+            )
+        ok = _run_batch_mode(args, tickers)
+        if not ok:
+            raise SystemExit(1)
+        return
+
     if args.output is None:
-        args.output = (
-            f"reports/{ticker.lower()}_earnings_report.html"
-        )
+        args.output = f"reports/{ticker.lower()}_earnings_report.html"
 
     # Branch: test data vs live data
     if args.test_data:
@@ -381,16 +513,12 @@ def main() -> None:
         if event_date is None:
             event_date = get_next_earnings_date(ticker)
         if event_date is None:
-            raise ValueError(
-                "Event date not provided and could not "
-                "be fetched."
-            )
+            raise ValueError("Event date not provided and could not be fetched.")
         event_date = _normalize_event_date(event_date)
         # Allow past event dates for test mode, but require future for live
         if not args.test_data and event_date <= dt.date.today():
             LOGGER.warning(
-                "Event date %s is not in the future. "
-                "Proceeding anyway for testing.",
+                "Event date %s is not in the future. Proceeding anyway for testing.",
                 event_date,
             )
 
@@ -413,7 +541,10 @@ def main() -> None:
             # Calibrate liquidity/wing-width params from the raw (unfiltered)
             # front chain before applying any filters.
             raw_front = get_options_chain(
-                ticker, front_expiry, cache_dir=None, use_cache=False,
+                ticker,
+                front_expiry,
+                cache_dir=None,
+                use_cache=False,
             )
             cal = calibrate_ticker_params(ticker, raw_front, spot)
 
@@ -500,24 +631,16 @@ def main() -> None:
     )
 
     front_iv = (
-        float(event_info["front_iv"])
-        if event_info["front_iv"] is not None
-        else 0.0
+        float(event_info["front_iv"]) if event_info["front_iv"] is not None else 0.0
     )
-    back_iv = (
-        float(event_info["back_iv"])
-        if event_info["back_iv"] is not None
-        else 0.0
-    )
+    back_iv = float(event_info["back_iv"]) if event_info["back_iv"] is not None else 0.0
     back2_iv = event_info.get("back2_iv")
     event_vol = float(np.sqrt(float(event_info["event_var"])))
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
 
     # Calibrate IV scenario magnitudes from event vol structure (live only)
     if not args.test_data and front_iv > 0 and back_iv > 0:
-        event_variance_ratio = float(
-            event_info.get("event_variance_ratio", 0.0)
-        )
+        event_variance_ratio = float(event_info.get("event_variance_ratio", 0.0))
         calibrate_iv_scenarios(front_iv, back_iv, event_variance_ratio)
 
     # Get term structure note from event_info
@@ -525,22 +648,15 @@ def main() -> None:
 
     t_front = business_days(dt.date.today(), front_expiry) / 252.0
     t_front = max(t_front, config.TIME_EPSILON)
-    t_back1_gex = (
-        business_days(dt.date.today(), back1_expiry) / 252.0
-    )
+    t_back1_gex = business_days(dt.date.today(), back1_expiry) / 252.0
     t_back1_gex = max(t_back1_gex, config.TIME_EPSILON)
     gex = gex_summary(front_chain, spot, t_front, div_yield=div_yield)
-    back_gex_result = gex_summary(
-        back1_chain, spot, t_back1_gex, div_yield=div_yield
-    )
+    back_gex_result = gex_summary(back1_chain, spot, t_back1_gex, div_yield=div_yield)
     skew = skew_metrics(front_chain, spot, t_front, div_yield=div_yield)
 
     gex_large_abs = cal.get("gex_large_abs", config.GEX_LARGE_ABS)
     gex_note = None
-    if (
-        gex["abs_gex"] >= gex_large_abs
-        and abs(gex["net_gex"]) / gex["abs_gex"] < 0.1
-    ):
+    if gex["abs_gex"] >= gex_large_abs and abs(gex["net_gex"]) / gex["abs_gex"] < 0.1:
         gex_note = "Positioning concentrated but direction uncertain"
 
     # ── Early snapshot fields for strategy condition gates ───────────
@@ -554,17 +670,21 @@ def main() -> None:
     _fc = front_chain.copy()
     _fc["_dist"] = (_fc["strike"] - spot).abs()
     atm_strike = float(_fc.sort_values("_dist").iloc[0]["strike"])
-    short_delta = abs(bsm_delta(
-        spot, atm_strike, t_front,
-        config.RISK_FREE_RATE, div_yield,
-        front_iv, "call",
-    ))
+    short_delta = abs(
+        bsm_delta(
+            spot,
+            atm_strike,
+            t_front,
+            config.RISK_FREE_RATE,
+            div_yield,
+            front_iv,
+            "call",
+        )
+    )
 
     early_snapshot = {
         "iv_ratio": iv_ratio,
-        "event_variance_ratio": event_info.get(
-            "event_variance_ratio", 0.0
-        ),
+        "event_variance_ratio": event_info.get("event_variance_ratio", 0.0),
         "implied_move": implied_move,
         "historical_p75": hist_p75,
         "short_delta": short_delta,
@@ -583,6 +703,7 @@ def main() -> None:
             shock_vol,
             config.MC_SIMULATIONS,
             seed=seed,
+            target_excess_kurtosis=dist_shape.get("kurtosis"),
         )
 
     strangle_offset = implied_move * 0.8
@@ -601,7 +722,9 @@ def main() -> None:
     front_expiry_ts = pd.Timestamp(front_expiry)
     if should_build_strategy("CALL_BACKSPREAD", early_snapshot):
         call_bs = build_call_backspread(
-            front_chain, spot, front_expiry_ts,
+            front_chain,
+            spot,
+            front_expiry_ts,
             wing_width_pct=wing_width_pct,
         )
         if call_bs is not None:
@@ -609,7 +732,9 @@ def main() -> None:
             LOGGER.info("Added call_backspread to strategy pool.")
     if should_build_strategy("PUT_BACKSPREAD", early_snapshot):
         put_bs = build_put_backspread(
-            front_chain, spot, front_expiry_ts,
+            front_chain,
+            spot,
+            front_expiry_ts,
             wing_width_pct=wing_width_pct,
         )
         if put_bs is not None:
@@ -620,14 +745,14 @@ def main() -> None:
 
     # Collect conditional strategies that did NOT qualify (for report)
     not_applicable: list[dict] = []
-    for cond_name in (
-        "CALL_BACKSPREAD", "PUT_BACKSPREAD", "POST_EVENT_CALENDAR"
-    ):
+    for cond_name in ("CALL_BACKSPREAD", "PUT_BACKSPREAD", "POST_EVENT_CALENDAR"):
         if not should_build_strategy(cond_name, early_snapshot):
-            not_applicable.append({
-                "name": cond_name,
-                "reason": _not_applicable_reason(cond_name, early_snapshot),
-            })
+            not_applicable.append(
+                {
+                    "name": cond_name,
+                    "reason": _not_applicable_reason(cond_name, early_snapshot),
+                }
+            )
 
     results = []
     for strategy in strategies:
@@ -647,9 +772,7 @@ def main() -> None:
                 div_yield=div_yield,
             )
         except ValueError as exc:
-            LOGGER.warning(
-                "Skipping strategy %s: %s", strategy.name, exc
-            )
+            LOGGER.warning("Skipping strategy %s: %s", strategy.name, exc)
             continue
 
         # Compute scenario EVs for each strategy
@@ -771,23 +894,13 @@ def main() -> None:
         "event_vol_ratio": event_vol_ratio,
         "expected_move_dollar": expected_move_dollar,
         "raw_event_var": event_info["raw_event_var"],
-        "event_variance_ratio": event_info.get(
-            "event_variance_ratio", 0.0
-        ),
-        "front_back_spread": event_info.get(
-            "front_back_spread", 0.0
-        ),
+        "event_variance_ratio": event_info.get("event_variance_ratio", 0.0),
+        "front_back_spread": event_info.get("front_back_spread", 0.0),
         "back_slope": event_info.get("back_slope"),
         "t_front": event_info.get("t_front", t_front),
-        "t_back1": event_info.get(
-            "t_back1", t_front + 20 / 252
-        ),
-        "interpolation_method": event_info.get(
-            "interpolation_method", "unknown"
-        ),
-        "negative_event_var": event_info.get(
-            "negative_event_var", False
-        ),
+        "t_back1": event_info.get("t_back1", t_front + 20 / 252),
+        "interpolation_method": event_info.get("interpolation_method", "unknown"),
+        "negative_event_var": event_info.get("negative_event_var", False),
         "term_structure_note": term_structure_note,
         "warning_level": event_info["warning_level"],
         "assumption": event_info["assumption"],
@@ -797,9 +910,7 @@ def main() -> None:
         "back_gex": back_gex_result["net_gex"],
         "gamma_flip": gex.get("gamma_flip"),
         "flip_distance_pct": gex.get("flip_distance_pct"),
-        "top_gamma_strikes": gex.get(
-            "top_gamma_strikes", []
-        ),
+        "top_gamma_strikes": gex.get("top_gamma_strikes", []),
         "gex_dealer_note": (
             "GEX sign assumes dealers are net short "
             "options. Interpret regime direction "
@@ -828,20 +939,24 @@ def main() -> None:
 
     # ── Post-event calendar (separate evaluation model) ───────────
     post_event_cal = None
-    if should_build_strategy(
-        "POST_EVENT_CALENDAR", early_snapshot
-    ):
+    if should_build_strategy("POST_EVENT_CALENDAR", early_snapshot):
         t_back1 = max(back_dte / 365.0, config.TIME_EPSILON)
         pe_result = build_post_event_calendar(
-            spot, atm_strike, front_iv, back_iv,
-            t_front, t_back1,
+            spot,
+            atm_strike,
+            front_iv,
+            back_iv,
+            t_front,
+            t_back1,
             pd.Timestamp(front_expiry),
             pd.Timestamp(back1_expiry),
             div_yield=div_yield,
         )
         pe_scenarios = compute_post_event_calendar_scenarios(
-            spot=spot, K=atm_strike,
-            t_short=t_front, t_long=t_back1,
+            spot=spot,
+            K=atm_strike,
+            t_short=t_front,
+            t_long=t_back1,
             iv_long=back_iv,
             net_cost=pe_result["net_cost"],
             div_yield=div_yield,
@@ -1012,9 +1127,9 @@ def _print_console_snapshot(
     gex: dict,
     regime: dict | None = None,
 ) -> None:
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("VOLATILITY DIAGNOSTICS")
-    print("="*60)
+    print("=" * 60)
     print(f"ImpliedMove:        {implied_move:.4f}")
     print(f"Historical P75:       {hist_p75:.4f}")
     implied_ratio = implied_move / max(hist_p75, 1e-9)
@@ -1023,9 +1138,9 @@ def _print_console_snapshot(
     print(f"EventVol / FrontIV:   {event_vol_ratio:.4f}")
 
     if regime:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("REGIME CLASSIFICATION")
-        print("="*60)
+        print("=" * 60)
         print(f"Vol Pricing:          {regime['vol_regime']}")
         print(f"Event Structure:      {regime['event_regime']}")
         print(f"Term Structure:       {regime['term_structure_regime']}")
@@ -1033,15 +1148,15 @@ def _print_console_snapshot(
         print(f"Composite Regime:     {regime['composite_regime']}")
         print(f"Composite Confidence: {regime['confidence']:.2f}")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("MICROSTRUCTURE DIAGNOSTICS")
-    print("="*60)
+    print("=" * 60)
     print(f"Slippage sensitivity (EV delta): {ev_2x - ev_base:.2f}")
     print(f"GEX net:  {gex['net_gex']:.2f}")
     print(f"GEX abs:  {gex['abs_gex']:.2f}")
-    if gex.get('gamma_flip'):
+    if gex.get("gamma_flip"):
         print(f"Gamma Flip: {gex['gamma_flip']:.2f}")
-    print("="*60)
+    print("=" * 60)
 
 
 if __name__ == "__main__":
