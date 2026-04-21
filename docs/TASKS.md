@@ -1,96 +1,96 @@
-# Tasks
-
-This is the latest-friendly task board for humans and AI agents.
-
-Detailed task specs remain in `tasks/`. This page is the quick decision and
-dependency surface.
+# Tasks Index
 
 ## Status Legend
 
-- completed: accepted and integrated
-- in_progress: partially complete or active follow-up work
-- pending: not started or no confirmed delivery yet
+| Status | Meaning |
+| --- | --- |
+| completed | accepted and integrated |
+| in_progress | partially complete or active follow-up work |
+| pending | not started |
 
-## Active Board
+## Task Index
 
-| ID | Task | Track | Priority | Status | Complexity | Depends On |
-| --- | --- | --- | --- | --- | --- | --- |
-| 001 | Event schema foundation | Core architecture | P1 | completed | strong | - |
-| 002 | Event dataset and outcomes | Data model | P1 | completed | strong | 001 |
-| 003 | Playbook policy engine | Core architecture | P1 | completed | strong | 001 |
-| 004 | Snapshot bridge | Migration | P1 | completed | strong | 001 |
-| 005 | Storage schema extension | Data model | P1 | completed | strong | 001, 002 |
-| 006 | Event replay framework | Research foundation | P1 | completed | strong | 002, 005 |
-| 007 | Earnings research workbook | Research workflow | P1 | completed | medium | 002, 006 |
-| 008 | Macro taxonomy and mapping | Research foundation | P1 | completed | medium | 001 |
-| 009 | Macro ETF research workbook | Research workflow | P1 | completed | medium | 006, 008 |
-| 010 | QuantConnect replay scaffold | Research export | P1 | completed | medium | 002, 006 |
-| 011 | Output contract and reporting bridge | Migration | P1 | completed | medium | 001, 003, 004 |
-| 012 | Dependency and env cleanup | Tooling hygiene | P2 | pending | simple | - |
-| 013 | Test strategy for migration | Quality strategy | P2 | pending | medium | - |
-| 014 | Task discovery follow-ups | Backlog process | P2 | pending | simple | - |
-| 015 | Gamma alignment fix | Trust blockers | P0 | completed | simple | - |
-| 016 | Ticker-agnostic audit | Trust blockers | P0 | completed | strong | - |
-| 017 | Symmetric butterfly | Structure coverage | P1 | completed | strong | 022 recommended |
-| 018 | Capital-normalized ranking | Ranking quality | P1 | completed | medium | 017 recommended |
-| 019 | Multi-ticker batch mode | Operator throughput | P1 | completed | strong | 016, 020 |
-| 020 | Earnings calendar auto-ingestion | Operator throughput | P1 | completed | medium | - |
-| 021 | Fat-tailed move distribution | Modeling quality | P1 | completed | strong | 022 recommended |
-| 022 | Regression smoke harness | Trust blockers | P0 | completed | medium | 015 |
-| 023 | IV Rank + IV Percentile dual classifier | Playbook alignment | P1 | pending | medium | 022 |
-| 024 | Conditional expected move (trimmed mean, 4Q recency, AMC/BMO, conditioning) | Playbook alignment | P1 | pending | strong | 021 |
-| 025 | Edge ratio (Implied / Conditional Expected, RICH/FAIR/CHEAP) | Playbook alignment | P1 | pending | medium | 024 |
-| 026 | Positioning proxy (OI, P/C, drift, max pain → UNDER/BALANCED/CROWDED) | Playbook alignment | P1 | pending | medium | - |
-| 027 | TYPE 1–5 classifier (deterministic rule engine) | Decision engine | P1 | pending | strong | 023, 025, 026 |
-| 028 | Signal graph (upstream/downstream chain, leader/follower, signal decay) | Decision engine | P1 | pending | strong | 027 |
-| 029 | 4-layer batch report (morning-scan format, --mode playbook-scan) | Decision engine | P1 | pending | medium | 027, 028 |
-| 030 | Post-earnings outcome tracking | Calibration | P2 | pending | medium | 002, 027 |
-| 031 | Calibration loop (weekly: edge ratio accuracy, TYPE accuracy, no-trade audit) | Calibration | P2 | pending | medium | 030 |
-| 032 | Automated earnings season workflow (daily cron + Telegram) | Calibration | P2 | pending | strong | 029, 031 |
+| ID | Task | Priority | Depends On | Status |
+| --- | --- | --- | --- | --- |
+| T001 | Event schema foundation | P1 | - | completed |
+| T002 | Event dataset and outcomes | P1 | T001 | completed |
+| T003 | Playbook policy engine | P1 | T001 | completed |
+| T004 | Snapshot bridge | P1 | T001 | completed |
+| T005 | Storage schema extension | P1 | T001,T002 | completed |
+| T006 | Event replay framework | P1 | T002,T005 | completed |
+| T007 | Earnings research workbook | P1 | T002,T006 | completed |
+| T008 | Macro taxonomy and mapping | P1 | T001 | completed |
+| T009 | Macro ETF research workbook | P1 | T006,T008 | completed |
+| T010 | QuantConnect replay scaffold | P1 | T002,T006 | completed |
+| T011 | Output contract and reporting bridge | P1 | T001,T003,T004 | completed |
+| T012 | Dependency and env cleanup | P2 | - | pending |
+| T013 | Test strategy for migration | P2 | - | pending |
+| T014 | Task discovery follow-ups | P2 | - | pending |
+| T015 | Gamma alignment fix | P0 | - | completed |
+| T016 | Ticker-agnostic audit | P0 | - | completed |
+| T017 | Symmetric butterfly | P1 | T022 | completed |
+| T018 | Capital-normalized ranking | P1 | T017 | completed |
+| T019 | Multi-ticker batch mode | P1 | T016,T020 | completed |
+| T020 | Earnings calendar auto-ingestion | P1 | - | completed |
+| T021 | Fat-tailed move distribution | P1 | T022 | completed |
+| T022 | Regression smoke harness | P0 | T015 | completed |
+| T023 | IV Rank + IV Percentile dual classifier | P1 | T022 | pending |
+| T024 | Conditional expected move | P1 | T021 | pending |
+| T025 | Edge ratio | P1 | T024 | pending |
+| T026 | Positioning proxy | P1 | - | pending |
+| T027 | TYPE 1-5 classifier | P1 | T023,T025,T026 | pending |
+| T028 | Signal graph | P1 | T027 | pending |
+| T029 | 4-layer batch report | P1 | T027,T028 | pending |
+| T030 | Post-earnings outcome tracking | P2 | T002,T027 | pending |
+| T031 | Calibration loop | P2 | T030 | pending |
+| T032 | Automated earnings season workflow | P2 | T029,T031 | pending |
 
-## Notes on Current Status
+## Dependency Chains
 
-- Task `019` and `020` completed: batch uses auto-discovery (no --event-date required),
-  unambiguous dates halt with exit code 2, source limitations documented in USER_GUIDE.
-- Task `021` fully implemented with explicit model selection, calibration, and
-  side-by-side comparison. All 18 tests passing.
+- Foundation: `T001` → `T002` → `T005` → `T006` → (`T007`, `T009`, `T010`)
+- Policy/Report: `T001` + `T003` + `T004` → `T011`
+- Trust: `T015` → `T022`
+- Coverage/Ranking: `T017` → `T018`
+- Throughput: `T020` + `T016` → `T019`
+- Playbook Alignment: `T022` → `T023` → `T024` → `T025` → `T026` → `T027`
+- Decision Engine: `T027` → `T028` → `T029`
+- Calibration: `T027` → `T030` → `T031` → `T032`
 
-## Dependency View
+## Detailed Specs
 
-- Foundation chain: `001` -> `002` -> `005` -> `006` -> (`007`, `009`, `010`)
-- Policy/report chain: `001` + `003` + `004` -> `011`
-- Trust chain: `015` -> `022`; `016` before relying on broad batch usage
-- Coverage/ranking chain: `017` -> `018`
-- Throughput chain: `020` + `016` -> `019`
-- Modeling chain: `022` before substantial `021` rollout changes
+Each task is documented in its own atomic file: `tasks/task_XXX.md`
 
-## Recommended Next Execution Order
-
-1. Close `019` + `020` → batch + auto-ingestion
-2. Close `012`, `013`, `014` → tooling hygiene
-3. **Playbook alignment layer** (in order):
-   - `023` → IV Rank + IV Percentile dual classifier
-   - `024` → Conditional expected move (trimmed mean, 4Q recency, AMC/BMO, conditioning)
-   - `025` → Edge ratio (Implied / Conditional Expected, RICH/FAIR/CHEAP labeling)
-   - `026` → Positioning proxy (OI concentration, P/C ratio, drift vs sector, max pain)
-4. **Decision engine**:
-   - `027` → TYPE 1–5 classifier (deterministic, rule-based)
-   - `028` → Signal graph (upstream/downstream chain, leader/follower, signal decay)
-   - `029` → 4-layer batch report (morning-scan format)
-5. **Calibration**:
-   - `030` → Post-earnings outcome tracking
-   - `031` → Calibration loop (weekly review)
-   - `032` → Automated earnings season workflow (daily cron + Telegram)
-
-## How to Work This Board
-
-- Read canonical scope in `tasks/<id>_*.md` before coding.
-- Keep acceptance criteria verifiable from code/tests/artifacts.
-- If scope expands, create a new task file instead of silently broadening the
-  existing task.
-
-## Related Docs
-
-- Roadmap: `docs/ROADMAP.md`
-- User operations: `docs/USER_GUIDE.md`
-- Feature map: `docs/FUNCTIONALITY.md`
+| ID   | Task File         | Status    |
+| ---- | ----------------- | --------- |
+| T001 | tasks/task_001.md | completed |
+| T002 | tasks/task_002.md | completed |
+| T003 | tasks/task_003.md | completed |
+| T004 | tasks/task_004.md | completed |
+| T005 | tasks/task_005.md | completed |
+| T006 | tasks/task_006.md | completed |
+| T007 | tasks/task_007.md | completed |
+| T008 | tasks/task_008.md | completed |
+| T009 | tasks/task_009.md | completed |
+| T010 | tasks/task_010.md | completed |
+| T011 | tasks/task_011.md | completed |
+| T012 | tasks/task_012.md | pending   |
+| T013 | tasks/task_013.md | pending   |
+| T014 | tasks/task_014.md | pending   |
+| T015 | tasks/task_015.md | completed |
+| T016 | tasks/task_016.md | completed |
+| T017 | tasks/task_017.md | completed |
+| T018 | tasks/task_018.md | completed |
+| T019 | tasks/task_019.md | completed |
+| T020 | tasks/task_020.md | completed |
+| T021 | tasks/task_021.md | completed |
+| T022 | tasks/task_022.md | completed |
+| T023 | tasks/task_023.md | pending   |
+| T024 | tasks/task_024.md | pending   |
+| T025 | tasks/task_025.md | pending   |
+| T026 | tasks/task_026.md | pending   |
+| T027 | tasks/task_027.md | pending   |
+| T028 | tasks/task_028.md | pending   |
+| T029 | tasks/task_029.md | pending   |
+| T030 | tasks/task_030.md | pending   |
+| T031 | tasks/task_031.md | pending   |
+| T032 | tasks/task_032.md | pending   |
