@@ -39,9 +39,65 @@ def test_cache_load_parses_expiry() -> None:
             expiry,
             cache_dir=cache_dir,
             use_cache=True,
+            cache_db_path=None,
         )
 
         assert pd.api.types.is_datetime64_any_dtype(loaded["expiry"])
+
+
+def test_use_cache_loads_from_database_before_network(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    expiry = dt.date(2030, 1, 17)
+
+    class _MockStore:
+        def query_chain(self, ticker: str, expiry: dt.date, min_quality: str):
+            assert ticker == "NVDA"
+            assert expiry == dt.date(2030, 1, 17)
+            assert min_quality == "valid"
+            return pd.DataFrame(
+                {
+                    "strike": [100.0],
+                    "bid": [1.0],
+                    "ask": [1.2],
+                    "implied_volatility": [0.2],
+                    "open_interest": [100],
+                    "option_type": ["call"],
+                    "expiry": [expiry],
+                    "mid": [1.1],
+                    "spread": [0.2],
+                }
+            )
+
+    monkeypatch.setattr(
+        "data.option_data_store.create_store",
+        lambda db_path: _MockStore(),
+    )
+
+    class _NoNetworkTicker:
+        def option_chain(self, expiry_label: str):  # noqa: ARG002
+            raise AssertionError("Network should not be called when DB cache exists")
+
+    monkeypatch.setattr(
+        "event_vol_analysis.data.loader.yf.Ticker",
+        lambda ticker: _NoNetworkTicker(),
+    )
+
+    db_path = tmp_path / "options_intraday.db"
+    db_path.write_text("placeholder", encoding="utf-8")
+
+    loaded = get_options_chain(
+        "NVDA",
+        expiry,
+        cache_dir=tmp_path,
+        use_cache=True,
+        cache_db_path=db_path,
+    )
+
+    assert len(loaded) == 1
+    assert "impliedVolatility" in loaded.columns
+    assert "openInterest" in loaded.columns
 
 
 def test_market_closed_detection() -> None:

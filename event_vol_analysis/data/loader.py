@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -14,6 +15,17 @@ from event_vol_analysis.config import BACK3_DTE_MIN, BACK3_DTE_MAX
 
 
 LOGGER = logging.getLogger(__name__)
+DEFAULT_CACHE_DB_PATH = Path("data/options_intraday.db")
+
+
+@dataclass(frozen=True)
+class EventDateResolution:
+    """Resolution result for one auto-discovered earnings event date."""
+
+    status: str
+    event_date: dt.date | None
+    message: str
+    candidates: list[dt.date]
 
 
 def get_spot_price(ticker: str) -> float:
@@ -58,6 +70,7 @@ def get_options_chain(
     cache_dir: Path | None = None,
     use_cache: bool = False,
     refresh_cache: bool = False,
+    cache_db_path: Path | None = DEFAULT_CACHE_DB_PATH,
 ) -> pd.DataFrame:
     """Fetch options chain for a given expiry and return combined frame."""
     cache_path = None
@@ -66,6 +79,15 @@ def get_options_chain(
         stamp = dt.date.today().strftime("%Y%m%d")
         cache_name = f"{ticker}_{expiry.strftime('%Y%m%d')}_{stamp}.csv"
         cache_path = cache_dir / cache_name
+
+    if use_cache and not refresh_cache:
+        db_cached = _load_chain_from_database_cache(
+            ticker,
+            expiry,
+            cache_db_path,
+        )
+        if db_cached is not None:
+            return db_cached
 
     if (
         use_cache
@@ -93,11 +115,89 @@ def get_options_chain(
             combined.to_csv(cache_path, index=False)
             LOGGER.info("Saved options chain to cache: %s", cache_path)
         else:
-            LOGGER.warning(
-                "Skipping cache save: data contains invalid (zero) prices"
-            )
+            LOGGER.warning("Skipping cache save: data contains invalid (zero) prices")
 
     return combined
+
+
+def _load_chain_from_database_cache(
+    ticker: str,
+    expiry: dt.date,
+    db_path: Path | None,
+) -> pd.DataFrame | None:
+    """Load one chain snapshot from SQLite cache when available."""
+    if db_path is None:
+        return None
+
+    path = Path(db_path)
+    if not path.exists():
+        return None
+
+    try:
+        from data.option_data_store import create_store
+
+        store = create_store(path)
+        chain = store.query_chain(
+            ticker=ticker,
+            expiry=expiry,
+            min_quality="valid",
+        )
+    except Exception as exc:  # pragma: no cover
+        LOGGER.warning(
+            "Database cache lookup failed for %s %s (%s): %s",
+            ticker,
+            expiry,
+            path,
+            exc,
+        )
+        return None
+
+    if chain.empty:
+        return None
+
+    normalized = chain.rename(
+        columns={
+            "implied_volatility": "impliedVolatility",
+            "open_interest": "openInterest",
+        }
+    ).copy()
+
+    if "expiry" in normalized.columns:
+        normalized["expiry"] = pd.to_datetime(normalized["expiry"])
+
+    if "mid" not in normalized.columns:
+        normalized["mid"] = (normalized["bid"] + normalized["ask"]) / 2.0
+    if "spread" not in normalized.columns:
+        normalized["spread"] = (normalized["ask"] - normalized["bid"]).clip(lower=0.0)
+
+    required = {
+        "strike",
+        "bid",
+        "ask",
+        "impliedVolatility",
+        "openInterest",
+        "option_type",
+        "expiry",
+    }
+    missing = required.difference(normalized.columns)
+    if missing:
+        LOGGER.warning(
+            "Database cache missing required columns for %s %s: %s",
+            ticker,
+            expiry,
+            sorted(missing),
+        )
+        return None
+
+    _raise_if_market_closed(normalized)
+    LOGGER.info(
+        "Loading options chain from database cache: %s (%s %s, rows=%d)",
+        path,
+        ticker,
+        expiry,
+        len(normalized),
+    )
+    return normalized
 
 
 def get_price_history(ticker: str, years: int) -> pd.DataFrame:
@@ -114,18 +214,113 @@ def get_price_history(ticker: str, years: int) -> pd.DataFrame:
 
 def get_next_earnings_date(ticker: str) -> dt.date | None:
     """Attempt to fetch the next earnings date from yfinance."""
-    yf_ticker = yf.Ticker(ticker)
-    try:
-        earnings = yf_ticker.get_earnings_dates(limit=1)
-    except Exception as exc:
-        LOGGER.warning("Earnings date fetch failed: %s", exc)
-        return None
-    if earnings is None or earnings.empty:
-        return None
-    next_date = earnings.index[0]
-    if isinstance(next_date, pd.Timestamp):
-        return next_date.date()
+    resolution = resolve_next_earnings_date(ticker)
+    if resolution.status == "resolved":
+        return resolution.event_date
     return None
+
+
+def resolve_next_earnings_date(
+    ticker: str,
+    *,
+    today: dt.date | None = None,
+    limit: int = 8,
+    ambiguity_window_days: int = 7,
+    max_days_ahead: int = 220,
+) -> EventDateResolution:
+    """Resolve one actionable next earnings date with ambiguity checks.
+
+    Returns a structured result so callers can fail with explicit operator
+    guidance instead of silently defaulting.
+    """
+    as_of = today or dt.date.today()
+    try:
+        earnings = yf.Ticker(ticker).get_earnings_dates(limit=limit)
+    except Exception as exc:
+        return EventDateResolution(
+            status="fetch_error",
+            event_date=None,
+            message=(
+                "Earnings calendar fetch failed from yfinance. "
+                "Provide --event-date YYYY-MM-DD or retry later. "
+                f"Provider error: {exc}"
+            ),
+            candidates=[],
+        )
+
+    if earnings is None or len(getattr(earnings, "index", [])) == 0:
+        return EventDateResolution(
+            status="missing",
+            event_date=None,
+            message=(
+                "No earnings dates were returned by yfinance. "
+                "Provide --event-date YYYY-MM-DD."
+            ),
+            candidates=[],
+        )
+
+    all_dates = sorted(
+        {ts.date() for ts in earnings.index if isinstance(ts, pd.Timestamp)}
+    )
+    if not all_dates:
+        return EventDateResolution(
+            status="missing",
+            event_date=None,
+            message=(
+                "Earnings calendar response had no parseable timestamps. "
+                "Provide --event-date YYYY-MM-DD."
+            ),
+            candidates=[],
+        )
+
+    upcoming = [event_date for event_date in all_dates if event_date >= as_of]
+    if not upcoming:
+        latest = all_dates[-1]
+        return EventDateResolution(
+            status="stale",
+            event_date=None,
+            message=(
+                "Earnings calendar appears stale (only past dates). "
+                f"Latest returned date: {latest}. "
+                "Provide --event-date YYYY-MM-DD."
+            ),
+            candidates=all_dates,
+        )
+
+    next_date = upcoming[0]
+    days_ahead = (next_date - as_of).days
+    if days_ahead > max_days_ahead:
+        return EventDateResolution(
+            status="stale",
+            event_date=None,
+            message=(
+                "Auto-discovered date is too far in the future to trust as "
+                f"next earnings ({next_date}, {days_ahead} days ahead). "
+                "Provide --event-date YYYY-MM-DD."
+            ),
+            candidates=upcoming,
+        )
+
+    if len(upcoming) >= 2:
+        second = upcoming[1]
+        if (second - next_date).days <= ambiguity_window_days:
+            return EventDateResolution(
+                status="ambiguous",
+                event_date=None,
+                message=(
+                    "Multiple nearby candidate earnings dates were returned "
+                    f"({next_date}, {second}). "
+                    "Provide --event-date YYYY-MM-DD."
+                ),
+                candidates=upcoming,
+            )
+
+    return EventDateResolution(
+        status="resolved",
+        event_date=next_date,
+        message=(f"Auto-discovered earnings date from yfinance: {next_date}"),
+        candidates=upcoming,
+    )
 
 
 def get_dividend_yield(ticker: str) -> float:
@@ -147,9 +342,7 @@ def get_dividend_yield(ticker: str) -> float:
             return float(yield_val)
     except Exception as exc:
         LOGGER.warning("Dividend yield fetch failed for %s: %s", ticker, exc)
-    LOGGER.info(
-        "No dividend yield found for %s; defaulting to 0.0", ticker
-    )
+    LOGGER.info("No dividend yield found for %s; defaulting to 0.0", ticker)
     return 0.0
 
 
@@ -208,8 +401,7 @@ def _raise_if_market_closed(chain: pd.DataFrame) -> None:
     asks = chain["ask"].fillna(0.0)
     if (bids == 0).all() and (asks == 0).all():
         raise ValueError(
-            "Options bid/ask are all 0.00; market appears closed or "
-            "data unavailable."
+            "Options bid/ask are all 0.00; market appears closed or data unavailable."
         )
 
 

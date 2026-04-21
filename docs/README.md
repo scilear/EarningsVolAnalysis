@@ -1,7 +1,5 @@
 # EarningsVolAnalysis Docs
 
-This directory is the canonical documentation surface for the project.
-
 The product is one tool with two functions:
 
 - Analyze: run pre-event options analysis and generate strategy reports.

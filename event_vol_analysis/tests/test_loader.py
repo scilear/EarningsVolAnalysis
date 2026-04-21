@@ -5,8 +5,10 @@ import datetime as dt
 import pytest
 
 from event_vol_analysis.data.loader import (
+    EventDateResolution,
     get_dividend_yield,
     get_expiries_after,
+    resolve_next_earnings_date,
 )
 
 
@@ -21,18 +23,14 @@ class _MockTicker:
 class TestGetDividendYield:
     """Tests for get_dividend_yield() in data/loader.py."""
 
-    def test_returns_yield_when_present(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_yield_when_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "event_vol_analysis.data.loader.yf.Ticker",
             lambda t: _MockTicker({"dividendYield": 0.012}),
         )
         assert get_dividend_yield("AAPL") == pytest.approx(0.012)
 
-    def test_returns_zero_for_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_zero_for_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "event_vol_analysis.data.loader.yf.Ticker",
             lambda t: _MockTicker({"dividendYield": None}),
@@ -48,9 +46,7 @@ class TestGetDividendYield:
         )
         assert get_dividend_yield("AAPL") == 0.0
 
-    def test_returns_zero_on_exception(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_zero_on_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _bad_ticker(t: str) -> None:
             raise RuntimeError("network error")
 
@@ -60,9 +56,7 @@ class TestGetDividendYield:
         )
         assert get_dividend_yield("AAPL") == 0.0
 
-    def test_return_type_is_float(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_return_type_is_float(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "event_vol_analysis.data.loader.yf.Ticker",
             lambda t: _MockTicker({"dividendYield": 0.012}),
@@ -82,3 +76,88 @@ def test_get_expiries_after_filters() -> None:
     ]
     result = get_expiries_after(expiries, dt.date(2026, 2, 1))
     assert result == [dt.date(2026, 2, 1), dt.date(2026, 3, 1)]
+
+
+class _MockEarningsTicker:
+    def __init__(self, earnings_index: list) -> None:
+        self._earnings_index = earnings_index
+
+    def get_earnings_dates(self, limit: int = 8):  # noqa: ARG002
+        import pandas as pd
+
+        return pd.DataFrame(index=pd.DatetimeIndex(self._earnings_index))
+
+
+class TestResolveNextEarningsDate:
+    def test_resolved_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "event_vol_analysis.data.loader.yf.Ticker",
+            lambda t: _MockEarningsTicker(
+                [
+                    dt.datetime(2026, 5, 28),
+                    dt.datetime(2026, 8, 27),
+                ]
+            ),
+        )
+        result = resolve_next_earnings_date("NVDA", today=dt.date(2026, 4, 21))
+        assert isinstance(result, EventDateResolution)
+        assert result.status == "resolved"
+        assert result.event_date == dt.date(2026, 5, 28)
+
+    def test_missing_when_provider_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import pandas as pd
+
+        class _EmptyTicker:
+            def get_earnings_dates(self, limit: int = 8):  # noqa: ARG002
+                return pd.DataFrame()
+
+        monkeypatch.setattr(
+            "event_vol_analysis.data.loader.yf.Ticker",
+            lambda t: _EmptyTicker(),
+        )
+        result = resolve_next_earnings_date("NVDA", today=dt.date(2026, 4, 21))
+        assert result.status == "missing"
+        assert result.event_date is None
+
+    def test_ambiguous_when_two_dates_close(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "event_vol_analysis.data.loader.yf.Ticker",
+            lambda t: _MockEarningsTicker(
+                [
+                    dt.datetime(2026, 5, 28),
+                    dt.datetime(2026, 6, 2),
+                ]
+            ),
+        )
+        result = resolve_next_earnings_date("NVDA", today=dt.date(2026, 4, 21))
+        assert result.status == "ambiguous"
+        assert result.event_date is None
+        assert len(result.candidates) >= 2
+
+    def test_stale_when_only_past_dates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "event_vol_analysis.data.loader.yf.Ticker",
+            lambda t: _MockEarningsTicker(
+                [
+                    dt.datetime(2025, 11, 20),
+                    dt.datetime(2026, 2, 20),
+                ]
+            ),
+        )
+        result = resolve_next_earnings_date("NVDA", today=dt.date(2026, 4, 21))
+        assert result.status == "stale"
+        assert result.event_date is None
+
+    def test_fetch_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _bad_ticker(t: str):
+            raise RuntimeError("network error")
+
+        monkeypatch.setattr(
+            "event_vol_analysis.data.loader.yf.Ticker",
+            _bad_ticker,
+        )
+        result = resolve_next_earnings_date("NVDA", today=dt.date(2026, 4, 21))
+        assert result.status == "fetch_error"
+        assert result.event_date is None
