@@ -30,22 +30,18 @@ dependency surface.
 | 013 | Test strategy for migration | Quality strategy | P2 | pending | medium | - |
 | 014 | Task discovery follow-ups | Backlog process | P2 | pending | simple | - |
 | 015 | Gamma alignment fix | Trust blockers | P0 | completed | simple | - |
-| 016 | Ticker-agnostic audit | Trust blockers | P0 | in_progress | strong | - |
+| 016 | Ticker-agnostic audit | Trust blockers | P0 | completed | strong | - |
 | 017 | Symmetric butterfly | Structure coverage | P1 | completed | strong | 022 recommended |
 | 018 | Capital-normalized ranking | Ranking quality | P1 | completed | medium | 017 recommended |
-| 019 | Multi-ticker batch mode | Operator throughput | P1 | in_progress | strong | 016, 020 |
-| 020 | Earnings calendar auto-ingestion | Operator throughput | P1 | in_progress | medium | - |
-| 021 | Fat-tailed move distribution | Modeling quality | P1 | in_progress | strong | 022 recommended |
+| 019 | Multi-ticker batch mode | Operator throughput | P1 | pending | strong | 016, 020 |
+| 020 | Earnings calendar auto-ingestion | Operator throughput | P1 | pending | medium | - |
+| 021 | Fat-tailed move distribution | Modeling quality | P1 | completed | strong | 022 recommended |
 | 022 | Regression smoke harness | Trust blockers | P0 | completed | medium | 015 |
 
 ## Notes on Current Status
 
-- Task `016` has at least one delivered slice and associated regression tests,
-  but remains an audit class task with potential follow-up scope.
-- Task `019` has `_run_batch_mode` with ticker loop, summary JSON, partial-failure handling.
-  Remaining: integrate auto-ingestion to batch (no event-date supplied path).
-- Task `020` has `auto_ingest_earnings_calendar` using yfinance. Test handles exit code 2
-  on ambiguous dates. Remaining: document source limitations, surface discovered date.
+- Task `019` and `020` have concrete implementation in the codebase; remaining
+  work is integrating auto-ingestion into batch (019) and documenting source limitations (020).
 - Task `021` fully implemented with explicit model selection, calibration, and
   side-by-side comparison. All 18 tests passing.
 
@@ -60,11 +56,9 @@ dependency surface.
 
 ## Recommended Next Execution Order
 
-1. finish `016` ticker-agnostic audit closure
-2. harden `020` event-date ambiguity/staleness behavior
-3. harden `019` operator summary output and partial-failure handling
-4. deepen `021` calibration + side-by-side comparison surfaces
-5. close process/tooling docs for `012`, `013`, `014`
+1. close `019` + `020` - integrate auto-ingestion into batch and document source limitations
+2. close process/tooling docs for `012`, `013`, `014`
+3. expand structure coverage (diagonal, broken-wing, risk reversal)
 
 ## How to Work This Board
 

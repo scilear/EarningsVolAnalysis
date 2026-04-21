@@ -33,11 +33,11 @@ season usability.
 Active/high-priority tasks:
 
 - `015` gamma alignment fix (completed)
-- `016` ticker-agnostic audit (in progress; first slice completed)
-- `022` regression smoke harness (implemented; keep maintained)
-- `019` multi-ticker batch mode (core implemented; needs auto-date integration)
-- `020` event-date auto-ingestion (implemented; needs ambiguity hardening)
-- `021` fat-tailed move distribution (implemented; 18 tests passing)
+- `016` ticker-agnostic audit (completed)
+- `022` regression smoke harness (completed)
+- `019` multi-ticker batch mode (core done; integrate auto-ingestion to close)
+- `020` event-date auto-ingestion (implemented; close with source docs)
+- `021` fat-tailed move distribution (completed; 18 tests passing)
 
 Exit criteria:
 
