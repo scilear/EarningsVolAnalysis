@@ -33,15 +33,25 @@ dependency surface.
 | 016 | Ticker-agnostic audit | Trust blockers | P0 | completed | strong | - |
 | 017 | Symmetric butterfly | Structure coverage | P1 | completed | strong | 022 recommended |
 | 018 | Capital-normalized ranking | Ranking quality | P1 | completed | medium | 017 recommended |
-| 019 | Multi-ticker batch mode | Operator throughput | P1 | pending | strong | 016, 020 |
-| 020 | Earnings calendar auto-ingestion | Operator throughput | P1 | pending | medium | - |
+| 019 | Multi-ticker batch mode | Operator throughput | P1 | completed | strong | 016, 020 |
+| 020 | Earnings calendar auto-ingestion | Operator throughput | P1 | completed | medium | - |
 | 021 | Fat-tailed move distribution | Modeling quality | P1 | completed | strong | 022 recommended |
 | 022 | Regression smoke harness | Trust blockers | P0 | completed | medium | 015 |
+| 023 | IV Rank + IV Percentile dual classifier | Playbook alignment | P1 | pending | medium | 022 |
+| 024 | Conditional expected move (trimmed mean, 4Q recency, AMC/BMO, conditioning) | Playbook alignment | P1 | pending | strong | 021 |
+| 025 | Edge ratio (Implied / Conditional Expected, RICH/FAIR/CHEAP) | Playbook alignment | P1 | pending | medium | 024 |
+| 026 | Positioning proxy (OI, P/C, drift, max pain → UNDER/BALANCED/CROWDED) | Playbook alignment | P1 | pending | medium | - |
+| 027 | TYPE 1–5 classifier (deterministic rule engine) | Decision engine | P1 | pending | strong | 023, 025, 026 |
+| 028 | Signal graph (upstream/downstream chain, leader/follower, signal decay) | Decision engine | P1 | pending | strong | 027 |
+| 029 | 4-layer batch report (morning-scan format, --mode playbook-scan) | Decision engine | P1 | pending | medium | 027, 028 |
+| 030 | Post-earnings outcome tracking | Calibration | P2 | pending | medium | 002, 027 |
+| 031 | Calibration loop (weekly: edge ratio accuracy, TYPE accuracy, no-trade audit) | Calibration | P2 | pending | medium | 030 |
+| 032 | Automated earnings season workflow (daily cron + Telegram) | Calibration | P2 | pending | strong | 029, 031 |
 
 ## Notes on Current Status
 
-- Task `019` and `020` have concrete implementation in the codebase; remaining
-  work is integrating auto-ingestion into batch (019) and documenting source limitations (020).
+- Task `019` and `020` completed: batch uses auto-discovery (no --event-date required),
+  unambiguous dates halt with exit code 2, source limitations documented in USER_GUIDE.
 - Task `021` fully implemented with explicit model selection, calibration, and
   side-by-side comparison. All 18 tests passing.
 
@@ -56,9 +66,21 @@ dependency surface.
 
 ## Recommended Next Execution Order
 
-1. close `019` + `020` - integrate auto-ingestion into batch and document source limitations
-2. close process/tooling docs for `012`, `013`, `014`
-3. expand structure coverage (diagonal, broken-wing, risk reversal)
+1. Close `019` + `020` → batch + auto-ingestion
+2. Close `012`, `013`, `014` → tooling hygiene
+3. **Playbook alignment layer** (in order):
+   - `023` → IV Rank + IV Percentile dual classifier
+   - `024` → Conditional expected move (trimmed mean, 4Q recency, AMC/BMO, conditioning)
+   - `025` → Edge ratio (Implied / Conditional Expected, RICH/FAIR/CHEAP labeling)
+   - `026` → Positioning proxy (OI concentration, P/C ratio, drift vs sector, max pain)
+4. **Decision engine**:
+   - `027` → TYPE 1–5 classifier (deterministic, rule-based)
+   - `028` → Signal graph (upstream/downstream chain, leader/follower, signal decay)
+   - `029` → 4-layer batch report (morning-scan format)
+5. **Calibration**:
+   - `030` → Post-earnings outcome tracking
+   - `031` → Calibration loop (weekly review)
+   - `032` → Automated earnings season workflow (daily cron + Telegram)
 
 ## How to Work This Board
 

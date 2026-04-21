@@ -87,6 +87,33 @@ Batch from ticker file (comma or newline separated):
 - `--cache-dir`, `--use-cache`, `--refresh-cache`: option chain cache controls
 - `--seed`: reproducible simulation seed
 
+If `--event-date` is omitted in live mode, the CLI auto-discovers from
+yfinance and now enforces strict guardrails:
+
+- ambiguous nearby dates (within 7 days) -> hard stop with action message
+- stale calendars (only past dates, or implausibly far-next date) -> hard stop
+- provider fetch failures -> hard stop with remediation (`--event-date`)
+
+On success, the resolved auto date is logged explicitly.
+
+### Data Source Notes
+
+The auto-discovery feature uses yfinance earnings calendars. Key limitations:
+
+- Dates are user-reported to yfinance, not official SEC filings
+- Some tickers have stale or missing calendars
+- Tickers without data will return "no dates found"
+- When in doubt, provide explicit `--event-date`
+
+`--use-cache` lookup order is now:
+
+1. SQLite options store (`data/options_intraday.db`) for matching
+   ticker + expiry (latest snapshot)
+2. CSV cache under `--cache-dir`
+3. live yfinance download
+
+Use `--refresh-cache` to force live fetch and bypass both cache layers.
+
 ### Available Test Scenarios
 
 - `baseline`
@@ -260,6 +287,12 @@ Batch scan partial failures:
 
 - Cause: one or more tickers fail data/event-date paths.
 - Fix: inspect batch summary JSON and rerun only failed names.
+
+Batch summary JSON now includes per ticker:
+
+- `ticker`, `event_date`, `regime`, `top_structure`, `score`
+- `blocking_warnings` (if any)
+- `ok`, `returncode`, and `error` on failures
 
 ## 6) Validation Commands
 
