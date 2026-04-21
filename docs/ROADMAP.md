@@ -35,8 +35,9 @@ Active/high-priority tasks:
 - `015` gamma alignment fix (completed)
 - `016` ticker-agnostic audit (in progress; first slice completed)
 - `022` regression smoke harness (implemented; keep maintained)
-- `019` multi-ticker batch mode hardening and operator summary maturity
-- `020` event-date auto-ingestion reliability and ambiguity handling
+- `019` multi-ticker batch mode (core implemented; needs auto-date integration)
+- `020` event-date auto-ingestion (implemented; needs ambiguity hardening)
+- `021` fat-tailed move distribution (implemented; 18 tests passing)
 
 Exit criteria:
 

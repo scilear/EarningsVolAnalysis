@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from event_vol_analysis import config
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -16,12 +18,12 @@ LOGGER = logging.getLogger(__name__)
 def compute_distribution_shape(signed_moves: list[float]) -> dict:
     """
     Compute distribution shape statistics from historical earnings moves.
-    
+
     Parameters
     ----------
     signed_moves : list of float
         List of signed percentage returns (not absolute values)
-    
+
     Returns
     -------
     dict with distribution statistics:
@@ -39,23 +41,59 @@ def compute_distribution_shape(signed_moves: list[float]) -> dict:
             "kurtosis": 0.0,
             "tail_probs": {},
         }
-    
-    arr = np.array(signed_moves)
+
+    arr = np.array(signed_moves, dtype=float)
     abs_arr = np.abs(arr)
-    
+
     # Tail probability thresholds
     tail_thresholds = [0.05, 0.08, 0.10, 0.12, 0.15]
-    tail_probs = {
-        t: float(np.mean(abs_arr > t))
-        for t in tail_thresholds
-    }
-    
+    tail_probs = {t: float(np.mean(abs_arr > t)) for t in tail_thresholds}
+
+    skewness = float(stats.skew(arr)) if len(arr) >= 3 else 0.0
+    kurtosis = float(stats.kurtosis(arr)) if len(arr) >= 4 else 0.0
+    skewness = 0.0 if np.isnan(skewness) else skewness
+    kurtosis = 0.0 if np.isnan(kurtosis) else kurtosis
+
     return {
         "mean_abs_move": float(np.mean(abs_arr)),
         "median_abs_move": float(np.median(abs_arr)),
-        "skewness": float(stats.skew(arr)),
-        "kurtosis": float(stats.kurtosis(arr)),  # excess kurtosis
+        "skewness": skewness,
+        "kurtosis": kurtosis,  # excess kurtosis
         "tail_probs": tail_probs,
+    }
+
+
+def calibrate_fat_tail_inputs(
+    signed_moves: list[float],
+) -> dict[str, float | int | bool]:
+    """Calibrate fat-tail simulation inputs from historical earnings moves."""
+    sample_size = len(signed_moves)
+    dist_shape = compute_distribution_shape(signed_moves)
+    raw_kurtosis = max(float(dist_shape["kurtosis"]), 0.0)
+
+    if sample_size < config.FAT_TAIL_MIN_HISTORY_MOVES:
+        return {
+            "sample_size": sample_size,
+            "raw_excess_kurtosis": raw_kurtosis,
+            "target_excess_kurtosis": 0.0,
+            "fat_tail_active": False,
+        }
+
+    sample_weight = min(
+        1.0,
+        sample_size / float(config.FAT_TAIL_CALIBRATION_FULL_SAMPLE),
+    )
+    target_excess_kurtosis = raw_kurtosis * sample_weight
+    target_excess_kurtosis = min(
+        target_excess_kurtosis,
+        config.FAT_TAIL_MAX_EXCESS_KURTOSIS,
+    )
+
+    return {
+        "sample_size": sample_size,
+        "raw_excess_kurtosis": raw_kurtosis,
+        "target_excess_kurtosis": target_excess_kurtosis,
+        "fat_tail_active": target_excess_kurtosis > 0.0,
     }
 
 
@@ -133,14 +171,14 @@ def extract_earnings_moves(
 ) -> list[float]:
     """
     Extract signed earnings gap moves from price history.
-    
+
     Parameters
     ----------
     history : pd.DataFrame
         Price history with 'Date' and 'Close' columns
     earnings_dates : list of pd.Timestamp
         Earnings announcement dates
-    
+
     Returns
     -------
     list of float
@@ -148,12 +186,12 @@ def extract_earnings_moves(
     """
     if history.empty or not earnings_dates:
         return []
-    
+
     history = history.copy()
     history["Date"] = pd.to_datetime(history["Date"]).dt.date
     close_map = history.set_index("Date")["Close"].to_dict()
     trading_days = sorted(close_map.keys())
-    
+
     signed_moves = []
     for earnings_dt in earnings_dates:
         event_date = _event_trading_day(trading_days, earnings_dt)
@@ -163,5 +201,5 @@ def extract_earnings_moves(
         prev_close = close_map[prev_date]
         event_close = close_map[event_date]
         signed_moves.append(event_close / prev_close - 1.0)
-    
+
     return signed_moves

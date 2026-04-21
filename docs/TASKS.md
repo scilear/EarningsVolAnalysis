@@ -42,10 +42,12 @@ dependency surface.
 
 - Task `016` has at least one delivered slice and associated regression tests,
   but remains an audit class task with potential follow-up scope.
-- Task `019` and `020` have concrete implementation in the codebase; remaining
-  work is operator UX and failure-path hardening.
-- Task `021` has a fat-tail simulation path in place; remaining work is deeper
-  calibration/comparison workflow hardening.
+- Task `019` has `_run_batch_mode` with ticker loop, summary JSON, partial-failure handling.
+  Remaining: integrate auto-ingestion to batch (no event-date supplied path).
+- Task `020` has `auto_ingest_earnings_calendar` using yfinance. Test handles exit code 2
+  on ambiguous dates. Remaining: document source limitations, surface discovered date.
+- Task `021` fully implemented with explicit model selection, calibration, and
+  side-by-side comparison. All 18 tests passing.
 
 ## Dependency View
 

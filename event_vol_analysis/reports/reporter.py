@@ -213,6 +213,12 @@ HTML_TEMPLATE = """\
       <th>Excess Kurtosis</th>
       <td>{{ "%.3f" | format(snapshot.kurtosis) }}</td>
     </tr>
+    <tr>
+      <th>Move Model (Selected)</th>
+      <td>{{ snapshot.move_model_selected }}</td>
+      <th>Move Model (Default)</th>
+      <td>{{ snapshot.move_model_default }}</td>
+    </tr>
   </table>
 
   {% if snapshot.tail_probs %}
@@ -227,6 +233,55 @@ HTML_TEMPLATE = """\
       {% for threshold, prob in snapshot.tail_probs.items() %}
       <td>{{ "%.1f" | format(prob * 100) }}%</td>
       {% endfor %}
+    </tr>
+  </table>
+  {% endif %}
+
+  {% if snapshot.fat_tail_calibration %}
+  <h4>Fat-Tail Calibration</h4>
+  <table>
+    <tr>
+      <th>Historical Move Sample Size</th>
+      <td>{{ snapshot.fat_tail_calibration.sample_size }}</td>
+      <th>Raw Excess Kurtosis</th>
+      <td>{{ "%.3f" | format(snapshot.fat_tail_calibration.raw_excess_kurtosis) }}</td>
+    </tr>
+    <tr>
+      <th>Target Excess Kurtosis</th>
+      <td>{{ "%.3f" | format(snapshot.fat_tail_calibration.target_excess_kurtosis) }}</td>
+      <th>Fat Tail Active</th>
+      <td>{{ snapshot.fat_tail_calibration.fat_tail_active }}</td>
+    </tr>
+  </table>
+  {% endif %}
+
+  {% if snapshot.simulation_comparison %}
+  <h4>Simulation Model Comparison</h4>
+  <table>
+    <tr>
+      <th>Metric</th>
+      <th>Lognormal</th>
+      <th>Fat-Tailed</th>
+    </tr>
+    <tr>
+      <td>Mean |Move|</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.lognormal.mean_abs_move * 100) }}%</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.fat_tailed.mean_abs_move * 100) }}%</td>
+    </tr>
+    <tr>
+      <td>P95 |Move|</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.lognormal.p95_abs_move * 100) }}%</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.fat_tailed.p95_abs_move * 100) }}%</td>
+    </tr>
+    <tr>
+      <td>P(|Move| &gt; 6%)</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.lognormal.tail_prob_gt_6pct * 100) }}%</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.fat_tailed.tail_prob_gt_6pct * 100) }}%</td>
+    </tr>
+    <tr>
+      <td>P(|Move| &gt; 10%)</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.lognormal.tail_prob_gt_10pct * 100) }}%</td>
+      <td>{{ "%.2f" | format(snapshot.simulation_comparison.fat_tailed.tail_prob_gt_10pct * 100) }}%</td>
     </tr>
   </table>
   {% endif %}

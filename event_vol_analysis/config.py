@@ -11,6 +11,10 @@ FAT_TAILS_ENABLED: bool = True
 FAT_TAIL_MIN_DF: float = 5.0
 FAT_TAIL_MAX_DF: float = 100.0
 FAT_TAIL_MAX_EXCESS_KURTOSIS: float = 6.0
+FAT_TAIL_MIN_HISTORY_MOVES: int = 6
+FAT_TAIL_CALIBRATION_FULL_SAMPLE: int = 12
+MOVE_MODEL_DEFAULT: str = "lognormal"
+MOVE_MODELS: tuple[str, str] = ("lognormal", "fat_tailed")
 
 # Strike filtering
 MONEYNESS_LOW: float = 0.80

@@ -33,6 +33,7 @@ from event_vol_analysis.analytics.bsm import (
 from event_vol_analysis.analytics.event_vol import event_variance
 from event_vol_analysis.analytics.gamma import gex_summary
 from event_vol_analysis.analytics.historical import (
+    calibrate_fat_tail_inputs,
     compute_distribution_shape,
     earnings_move_p75,
     extract_earnings_moves,
@@ -44,14 +45,15 @@ from event_vol_analysis.data.filters import (
     filter_by_moneyness,
 )
 from event_vol_analysis.data.loader import (
+    EventDateResolution,
     get_dividend_yield,
     get_earnings_dates,
     get_expiries_after,
-    get_next_earnings_date,
     get_option_expiries,
     get_options_chain,
     get_price_history,
     get_spot_price,
+    resolve_next_earnings_date,
 )
 from event_vol_analysis.data.test_data import (
     generate_test_data_set,
@@ -281,8 +283,10 @@ def _batch_command_for_ticker(
     args: argparse.Namespace,
     ticker: str,
     output_path: Path,
+    analysis_summary_path: Path | None = None,
 ) -> list[str]:
     """Build batch subprocess command for one ticker run."""
+    move_model = getattr(args, "move_model", config.MOVE_MODEL_DEFAULT)
     command = [
         sys.executable,
         "-m",
@@ -303,6 +307,8 @@ def _batch_command_for_ticker(
         command.append("--refresh-cache")
     if args.seed is not None:
         command.extend(["--seed", str(args.seed)])
+    if move_model:
+        command.extend(["--move-model", move_model])
     if args.test_data:
         command.append("--test-data")
     if args.test_scenario:
@@ -311,7 +317,19 @@ def _batch_command_for_ticker(
         command.extend(["--test-data-dir", args.test_data_dir])
     if args.save_test_data:
         command.extend(["--save-test-data", args.save_test_data])
+    if analysis_summary_path is not None:
+        command.extend(["--analysis-summary-json", str(analysis_summary_path)])
     return command
+
+
+def _extract_failure_reason(result: subprocess.CompletedProcess[str]) -> str:
+    """Return one compact failure reason from subprocess output."""
+    for stream in (result.stderr, result.stdout):
+        if stream:
+            lines = [line.strip() for line in stream.splitlines() if line.strip()]
+            if lines:
+                return lines[-1]
+    return "analysis subprocess failed without stderr/stdout details"
 
 
 def _run_batch_mode(args: argparse.Namespace, tickers: list[str]) -> bool:
@@ -328,22 +346,93 @@ def _run_batch_mode(args: argparse.Namespace, tickers: list[str]) -> bool:
 
     for ticker in tickers:
         output_path = output_dir / f"{ticker.lower()}_earnings_report.html"
-        command = _batch_command_for_ticker(args, ticker, output_path)
+        analysis_summary_path = output_dir / f"{ticker.lower()}_analysis_summary.json"
+        if analysis_summary_path.exists():
+            analysis_summary_path.unlink()
+        command = _batch_command_for_ticker(
+            args,
+            ticker,
+            output_path,
+            analysis_summary_path=analysis_summary_path,
+        )
         LOGGER.info("Batch run for %s -> %s", ticker, output_path)
-        result = subprocess.run(command, check=False)
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
 
         ok = result.returncode == 0
         if ok:
             summary["tickers_succeeded"] += 1
         else:
             summary["tickers_failed"] += 1
-        summary["results"].append(
-            {
-                "ticker": ticker,
-                "output": str(output_path),
-                "returncode": int(result.returncode),
-                "ok": ok,
-            }
+        result_row: dict[str, object] = {
+            "ticker": ticker,
+            "output": str(output_path),
+            "returncode": int(result.returncode),
+            "ok": ok,
+            "event_date": None,
+            "regime": None,
+            "top_structure": None,
+            "score": None,
+            "blocking_warnings": [],
+        }
+
+        if analysis_summary_path.exists():
+            try:
+                analysis_summary = json.loads(
+                    analysis_summary_path.read_text(encoding="utf-8")
+                )
+            except json.JSONDecodeError:
+                analysis_summary = {}
+            result_row["event_date"] = analysis_summary.get("event_date")
+            result_row["regime"] = analysis_summary.get("regime")
+            result_row["top_structure"] = analysis_summary.get("top_structure")
+            result_row["score"] = analysis_summary.get("score")
+            result_row["blocking_warnings"] = analysis_summary.get(
+                "blocking_warnings", []
+            )
+
+        if not ok:
+            result_row["error"] = _extract_failure_reason(result)
+            LOGGER.error(
+                "Batch failed for %s (rc=%d): %s",
+                ticker,
+                result.returncode,
+                result_row["error"],
+            )
+
+        summary["results"].append(result_row)
+
+    LOGGER.info(
+        "%-8s %-12s %-28s %-18s %-8s %s",
+        "Ticker",
+        "Event",
+        "Regime",
+        "Top",
+        "Score",
+        "Warnings",
+    )
+    for row in summary["results"]:
+        event_label = str(row.get("event_date") or "-")
+        regime_label = str(row.get("regime") or "-")
+        top_label = str(row.get("top_structure") or "-")
+        score_raw = row.get("score")
+        score_label = f"{float(score_raw):.4f}" if score_raw is not None else "-"
+        warnings = row.get("blocking_warnings") or []
+        warning_label = ",".join(str(item) for item in warnings) if warnings else "-"
+        if not row.get("ok", False):
+            warning_label = str(row.get("error") or warning_label)
+        LOGGER.info(
+            "%-8s %-12s %-28s %-18s %-8s %s",
+            str(row.get("ticker")),
+            event_label,
+            regime_label[:28],
+            top_label[:18],
+            score_label,
+            warning_label,
         )
 
     if args.batch_summary_json:
@@ -417,6 +506,13 @@ def main() -> None:
         help="Random seed for Monte Carlo reproducibility",
     )
     parser.add_argument(
+        "--move-model",
+        type=str,
+        default=config.MOVE_MODEL_DEFAULT,
+        choices=list(config.MOVE_MODELS),
+        help=("Monte Carlo move model (lognormal or fat_tailed; default: %(default)s)"),
+    )
+    parser.add_argument(
         "--test-data",
         action="store_true",
         help="Use synthetic test data instead of live market data",
@@ -452,7 +548,15 @@ def main() -> None:
         default=None,
         help="Optional JSON summary output path for batch runs",
     )
+    parser.add_argument(
+        "--analysis-summary-json",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
+    if not hasattr(args, "move_model"):
+        args.move_model = config.MOVE_MODEL_DEFAULT
 
     batch_requested = args.tickers is not None or args.ticker_file is not None
     if batch_requested:
@@ -485,8 +589,11 @@ def main() -> None:
     if args.output is None:
         args.output = f"reports/{ticker.lower()}_earnings_report.html"
 
+    event_date_source = "provided"
+
     # Branch: test data vs live data
     if args.test_data:
+        event_date_source = "test_data"
         test_data = _load_test_data_mode(args)
         spot = test_data["spot"]
         div_yield = config.DIVIDEND_YIELD
@@ -510,10 +617,18 @@ def main() -> None:
     else:
         # Live data mode (existing logic)
         event_date = _parse_event_date(args.event_date)
+        event_date_source = "provided" if event_date is not None else "auto"
         if event_date is None:
-            event_date = get_next_earnings_date(ticker)
-        if event_date is None:
-            raise ValueError("Event date not provided and could not be fetched.")
+            resolution: EventDateResolution = resolve_next_earnings_date(ticker)
+            if resolution.status != "resolved" or resolution.event_date is None:
+                message = (
+                    "Event date not provided and auto-discovery failed for "
+                    f"{ticker}: {resolution.message}"
+                )
+                LOGGER.error("%s", message)
+                raise SystemExit(2)
+            event_date = resolution.event_date
+            LOGGER.info("%s", resolution.message)
         event_date = _normalize_event_date(event_date)
         # Allow past event dates for test mode, but require future for live
         if not args.test_data and event_date <= dt.date.today():
@@ -618,6 +733,9 @@ def main() -> None:
     # Extract historical distribution shape
     signed_moves = extract_earnings_moves(history, earnings_dates)
     dist_shape = compute_distribution_shape(signed_moves)
+    fat_tail_inputs = calibrate_fat_tail_inputs(signed_moves)
+    target_excess_kurtosis = float(fat_tail_inputs["target_excess_kurtosis"])
+    historical_sample_size = int(fat_tail_inputs["sample_size"])
 
     event_info = event_variance(
         front_chain,
@@ -703,8 +821,41 @@ def main() -> None:
             shock_vol,
             config.MC_SIMULATIONS,
             seed=seed,
-            target_excess_kurtosis=dist_shape.get("kurtosis"),
+            model=args.move_model,
+            target_excess_kurtosis=target_excess_kurtosis,
+            historical_sample_size=historical_sample_size,
         )
+
+    comparison_seed = 0 if args.seed is None else args.seed + 777
+    lognormal_moves = simulate_moves(
+        event_vol,
+        config.MC_SIMULATIONS,
+        seed=comparison_seed,
+        model="lognormal",
+    )
+    fat_tailed_moves = simulate_moves(
+        event_vol,
+        config.MC_SIMULATIONS,
+        seed=comparison_seed,
+        model="fat_tailed",
+        target_excess_kurtosis=target_excess_kurtosis,
+        historical_sample_size=historical_sample_size,
+    )
+
+    simulation_comparison = {
+        "lognormal": {
+            "mean_abs_move": float(np.mean(np.abs(lognormal_moves))),
+            "p95_abs_move": float(np.percentile(np.abs(lognormal_moves), 95)),
+            "tail_prob_gt_6pct": float(np.mean(np.abs(lognormal_moves) > 0.06)),
+            "tail_prob_gt_10pct": float(np.mean(np.abs(lognormal_moves) > 0.10)),
+        },
+        "fat_tailed": {
+            "mean_abs_move": float(np.mean(np.abs(fat_tailed_moves))),
+            "p95_abs_move": float(np.percentile(np.abs(fat_tailed_moves), 95)),
+            "tail_prob_gt_6pct": float(np.mean(np.abs(fat_tailed_moves) > 0.06)),
+            "tail_prob_gt_10pct": float(np.mean(np.abs(fat_tailed_moves) > 0.10)),
+        },
+    }
 
     strangle_offset = implied_move * 0.8
     strategies = build_strategies(
@@ -922,6 +1073,10 @@ def main() -> None:
         "skewness": dist_shape["skewness"],
         "kurtosis": dist_shape["kurtosis"],
         "tail_probs": dist_shape.get("tail_probs", {}),
+        "move_model_selected": args.move_model,
+        "move_model_default": config.MOVE_MODEL_DEFAULT,
+        "fat_tail_calibration": fat_tail_inputs,
+        "simulation_comparison": simulation_comparison,
         "rr25": rr25_value,
         "bf25": bf25_value,
         "ev_base": ev_base,
@@ -1011,6 +1166,35 @@ def main() -> None:
         gex,
         regime,
     )
+
+    analysis_summary_path = getattr(args, "analysis_summary_json", None)
+    if analysis_summary_path:
+        blocking_warnings: list[str] = []
+        if snapshot.get("negative_event_var"):
+            blocking_warnings.append("negative_event_var")
+        if snapshot.get("warning_level"):
+            blocking_warnings.append(f"event_var_warning:{snapshot['warning_level']}")
+        if snapshot.get("term_structure_note"):
+            blocking_warnings.append("term_structure_inversion")
+        if snapshot.get("gex_note"):
+            blocking_warnings.append("gex_concentration_ambiguous")
+
+        analysis_summary = {
+            "ticker": ticker,
+            "event_date": str(event_date),
+            "event_date_source": event_date_source,
+            "regime": regime.get("composite_regime"),
+            "top_structure": top.get("name"),
+            "score": round(float(top.get("score", 0.0)), 4),
+            "move_model": args.move_model,
+            "blocking_warnings": blocking_warnings,
+        }
+        summary_path = Path(analysis_summary_path)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(analysis_summary, indent=2),
+            encoding="utf-8",
+        )
 
     LOGGER.info("Report written to %s", report_path)
 

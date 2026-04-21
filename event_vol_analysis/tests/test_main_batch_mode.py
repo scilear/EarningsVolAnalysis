@@ -22,12 +22,14 @@ def _base_args() -> argparse.Namespace:
         use_cache=False,
         refresh_cache=False,
         seed=42,
+        move_model="lognormal",
         test_data=True,
         test_scenario="baseline",
         test_data_dir=None,
         save_test_data=None,
         batch_output_dir="reports/batch",
         batch_summary_json="reports/batch_summary.json",
+        analysis_summary_json=None,
     )
 
 
@@ -41,12 +43,41 @@ def test_run_batch_mode_writes_summary_json(
 
     commands: list[list[str]] = []
 
+    analysis_payloads = {
+        "NVDA": {
+            "event_date": "2026-05-28",
+            "regime": "Mixed / Transitional Setup",
+            "top_structure": "CALENDAR",
+            "score": 0.8123,
+            "blocking_warnings": [],
+        },
+        "TSLA": {
+            "event_date": "2026-05-02",
+            "regime": "Convex Breakout Setup",
+            "top_structure": "LONG_STRADDLE",
+            "score": 0.7012,
+            "blocking_warnings": ["negative_event_var"],
+        },
+    }
+
     class _Result:
         def __init__(self, returncode: int) -> None:
             self.returncode = returncode
 
-    def _fake_run(command: list[str], check: bool = False):  # noqa: ARG001
+    def _fake_run(
+        command: list[str],
+        check: bool = False,  # noqa: ARG001
+        capture_output: bool = False,  # noqa: ARG001
+        text: bool = False,  # noqa: ARG001
+    ):
         commands.append(command)
+        ticker = command[command.index("--ticker") + 1]
+        summary_path = Path(command[command.index("--analysis-summary-json") + 1])
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(analysis_payloads[ticker]),
+            encoding="utf-8",
+        )
         return _Result(0)
 
     monkeypatch.setattr(main_module.subprocess, "run", _fake_run)
@@ -60,6 +91,38 @@ def test_run_batch_mode_writes_summary_json(
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["tickers_succeeded"] == 2
     assert summary["tickers_failed"] == 0
+    assert summary["results"][0]["event_date"] == "2026-05-28"
+    assert summary["results"][0]["regime"] == "Mixed / Transitional Setup"
+    assert summary["results"][0]["top_structure"] == "CALENDAR"
+    assert summary["results"][0]["score"] == pytest.approx(0.8123)
+    assert summary["results"][1]["blocking_warnings"] == ["negative_event_var"]
+
+
+def test_main_exits_with_code_2_when_auto_event_date_is_ambiguous(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _base_args()
+    args.tickers = None
+    args.ticker = "NVDA"
+    args.test_data = False
+    args.output = "reports/nvda.html"
+
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", lambda self: args)
+
+    class _Resolution:
+        status = "ambiguous"
+        event_date = None
+        message = "Multiple nearby candidate earnings dates were returned"
+
+    monkeypatch.setattr(
+        main_module,
+        "resolve_next_earnings_date",
+        lambda ticker: _Resolution(),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main_module.main()
+    assert exc_info.value.code == 2
 
 
 def test_main_batch_mode_exits_nonzero_on_failure(
@@ -97,3 +160,17 @@ def test_main_batch_mode_uses_ticker_file(
 
     main_module.main()
     assert captured["tickers"] == ["AAPL", "MSFT"]
+
+
+def test_batch_command_includes_move_model() -> None:
+    args = _base_args()
+    args.move_model = "fat_tailed"
+
+    command = main_module._batch_command_for_ticker(
+        args,
+        ticker="NVDA",
+        output_path=Path("reports/nvda_earnings_report.html"),
+    )
+
+    move_model_index = command.index("--move-model")
+    assert command[move_model_index + 1] == "fat_tailed"
