@@ -389,18 +389,18 @@ automated cron workflow for morning earnings reviews.
 
 **Execution path (depends on T027 baseline; T029 strongly recommended):**
 
-1. **T030** — Post-earnings outcome tracking (schema + CLI script for operator data entry)
+1. **T030** — Post-earnings outcome tracking (schema + CLI script for operator data entry) [completed]
    - Record per-event: TYPE classification, edge ratio, realized move, Phase 1/2 categories
    - Auto-populate realized move from price history after event date passes
    
-2. **T031** — Calibration loop (weekly report comparing ex-ante to ex-post)
+2. **T031** — Calibration loop (weekly report comparing ex-ante to ex-post) [completed]
    - Edge ratio accuracy by label bucket
    - TYPE classification accuracy per type number
    - No-trade audit (TYPE 5 miss rate)
    - Decision quality (good-process / bad-outcome separation)
    - Threshold adjustment gate: 20 obs minimum before suggesting changes
 
-3. **T032** — Automated earnings season workflow (daily cron + Telegram alerting)
+3. **T032** — Automated earnings season workflow (daily cron + Telegram alerting) [next]
    - Daily cron: pull calendar (next 10-14 days) → apply hard liquidity filters → run 4-layer snapshot → classify TYPE → Telegram alert for non-TYPE-5 names
    - Morning-scan report saved to `reports/daily/YYYY-MM-DD_playbook_scan.html`
    - Manual confirmation required for any entry (human-in-the-loop always)
