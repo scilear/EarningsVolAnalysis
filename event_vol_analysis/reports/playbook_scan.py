@@ -155,7 +155,7 @@ def create_scan_row_from_snapshot(
     snapshot: dict[str, Any],
 ) -> PlaybookScanRow:
     """Create a PlaybookScanRow from a full analysis snapshot."""
-    vol_regime = snapshot.get("regime", {})
+    vol_regime = snapshot.get("vol_regime", {})
     edge_ratio = snapshot.get("edge_ratio", {})
     positioning = snapshot.get("positioning", {})
     signal_graph = snapshot.get("signal_graph", {})
