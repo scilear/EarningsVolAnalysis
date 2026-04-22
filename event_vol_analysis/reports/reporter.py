@@ -107,6 +107,19 @@ HTML_TEMPLATE = """\
         <td>{{ "%.2f" | format(snapshot.regime.vol_confidence) }}</td>
       </tr>
       <tr>
+        <th>IVR / IVP</th>
+        <td>
+          {% if snapshot.regime.ivr is not none and snapshot.regime.ivp is not none %}
+            {{ "%.1f" | format(snapshot.regime.ivr) }} /
+            {{ "%.1f" | format(snapshot.regime.ivp) }}
+          {% else %}
+            N/A
+          {% endif %}
+        </td>
+        <th>Vol Confidence</th>
+        <td>{{ snapshot.regime.vol_confidence_label or "LOW" }}</td>
+      </tr>
+      <tr>
         <th>Event Structure</th>
         <td>{{ snapshot.regime.event_regime }}</td>
         <th>Signal Strength</th>
@@ -154,6 +167,12 @@ HTML_TEMPLATE = """\
       <th>Vol Regime</th>
       <td><strong>{{ snapshot.regime.vol_regime }}</strong></td>
     </tr>
+    <tr>
+      <th>IVR Bucket / IVP Bucket</th>
+      <td>{{ snapshot.regime.bucket_ivr }} / {{ snapshot.regime.bucket_ivp }}</td>
+      <th>Legacy Vol Label</th>
+      <td>{{ snapshot.regime.vol_regime_legacy }}</td>
+    </tr>
   </table>
 
   <h4>Term Structure Diagnostics</h4>
@@ -173,6 +192,24 @@ HTML_TEMPLATE = """\
       <td>{{ "%.2f" | format(snapshot.front_back_spread * 100) }} vol pts</td>
       <th>Term Structure</th>
       <td colspan="{% if snapshot.back2_iv %}4{% else %}2{% endif %}">{{ snapshot.regime.term_structure_regime }}</td>
+    </tr>
+    <tr>
+      <th>Term Structure Slope</th>
+      <td>
+        {% if snapshot.regime.term_structure_slope is not none %}
+          {{ "%.2f" | format(snapshot.regime.term_structure_slope * 100) }}%
+        {% else %}
+          N/A
+        {% endif %}
+      </td>
+      <th>Skew 25d (put-call)</th>
+      <td colspan="{% if snapshot.back2_iv %}4{% else %}2{% endif %}">
+        {% if snapshot.regime.skew_25d is not none %}
+          {{ "%.4f" | format(snapshot.regime.skew_25d) }}
+        {% else %}
+          N/A
+        {% endif %}
+      </td>
     </tr>
   </table>
 
@@ -220,6 +257,54 @@ HTML_TEMPLATE = """\
       <td>{{ snapshot.move_model_default }}</td>
     </tr>
   </table>
+
+  {% if snapshot.conditional_expected %}
+  <h4>Conditional Expected Move</h4>
+  <table>
+    <tr>
+      <th>Primary Estimate</th>
+      <td>{{ "%.2f" | format(snapshot.conditional_expected.primary_estimate * 100) }}%</td>
+      <th>Data Quality</th>
+      <td>{{ snapshot.conditional_expected.data_quality }}</td>
+    </tr>
+    <tr>
+      <th>Median</th>
+      <td>{{ "%.2f" | format(snapshot.conditional_expected.median * 100) }}%</td>
+      <th>Trimmed Mean</th>
+      <td>
+        {% if snapshot.conditional_expected.trimmed_mean is not none %}
+          {{ "%.2f" | format(snapshot.conditional_expected.trimmed_mean * 100) }}%
+        {% else %}
+          N/A
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>Recency-Weighted (4Q)</th>
+      <td>
+        {% if snapshot.conditional_expected.recency_weighted is not none %}
+          {{ "%.2f" | format(snapshot.conditional_expected.recency_weighted * 100) }}%
+        {% else %}
+          N/A
+        {% endif %}
+      </td>
+      <th>Timing Method</th>
+      <td>{{ snapshot.conditional_expected.timing_method }}</td>
+    </tr>
+    <tr>
+      <th>Observations</th>
+      <td>{{ snapshot.conditional_expected.n_observations }}</td>
+      <th>Conditioning Applied</th>
+      <td>
+        {% if snapshot.conditional_expected.conditioning_applied %}
+          {{ snapshot.conditional_expected.conditioning_applied | join(", ") }}
+        {% else %}
+          none
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+  {% endif %}
 
   {% if snapshot.tail_probs %}
   <h4>Tail Probability Table</h4>

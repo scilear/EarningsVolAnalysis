@@ -34,12 +34,15 @@ from event_vol_analysis.analytics.event_vol import event_variance
 from event_vol_analysis.analytics.gamma import gex_summary
 from event_vol_analysis.analytics.historical import (
     calibrate_fat_tail_inputs,
+    conditional_expected_move,
     compute_distribution_shape,
     earnings_move_p75,
-    extract_earnings_moves,
+    extract_earnings_moves_with_dates,
+    split_by_timing,
 )
 from event_vol_analysis.analytics.implied_move import implied_move_from_chain
 from event_vol_analysis.analytics.skew import skew_metrics
+from event_vol_analysis.analytics.vol_regime import load_atm_iv_history_from_store
 from event_vol_analysis.data.filters import (
     filter_by_liquidity,
     filter_by_moneyness,
@@ -731,11 +734,44 @@ def main() -> None:
         return
 
     # Extract historical distribution shape
-    signed_moves = extract_earnings_moves(history, earnings_dates)
+    aligned_earnings_dates, signed_moves = extract_earnings_moves_with_dates(
+        history,
+        earnings_dates,
+    )
     dist_shape = compute_distribution_shape(signed_moves)
     fat_tail_inputs = calibrate_fat_tail_inputs(signed_moves)
     target_excess_kurtosis = float(fat_tail_inputs["target_excess_kurtosis"])
     historical_sample_size = int(fat_tail_inputs["sample_size"])
+
+    abs_moves = [abs(move) for move in signed_moves]
+    conditional_expected = conditional_expected_move(abs_moves)
+    timing_splits = split_by_timing(ticker, aligned_earnings_dates, signed_moves)
+    resolved_event_timing = _resolve_event_timing_bucket(
+        ticker,
+        event_date,
+        fallback_split=timing_splits,
+    )
+    if resolved_event_timing in {"amc", "bmo"}:
+        split_moves = timing_splits.get(resolved_event_timing, [])
+        if len(split_moves) >= 4:
+            conditional_expected = conditional_expected_move(
+                split_moves,
+                timing=resolved_event_timing,
+            )
+        else:
+            LOGGER.warning(
+                "Insufficient %s observations (%d) for %s; falling back to combined.",
+                resolved_event_timing,
+                len(split_moves),
+                ticker,
+            )
+            conditional_expected = conditional_expected_move(
+                abs_moves, timing="combined"
+            )
+    elif resolved_event_timing == "unknown":
+        conditional_expected = conditional_expected_move(abs_moves, timing="unknown")
+
+    atm_iv_history = load_atm_iv_history_from_store(ticker)
 
     event_info = event_variance(
         front_chain,
@@ -1027,12 +1063,15 @@ def main() -> None:
         top["pnls"],
         f"Top Strategy: {top['strategy']}",
     )
+    rr25_raw = skew["rr25"]
+    bf25_raw = skew["bf25"]
     rr25_value = f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
     bf25_value = f"{skew['bf25']:.4f}" if skew["bf25"] is not None else "N/A"
 
     # Build comprehensive snapshot (includes early_snapshot fields)
     snapshot = {
         "spot": spot,
+        "ticker": ticker,
         "event_date": event_date,
         "front_expiry": front_expiry,
         "back_expiry": back1_expiry,
@@ -1073,12 +1112,31 @@ def main() -> None:
         "skewness": dist_shape["skewness"],
         "kurtosis": dist_shape["kurtosis"],
         "tail_probs": dist_shape.get("tail_probs", {}),
+        "atm_iv_history": atm_iv_history,
+        "conditional_expected": {
+            "median": conditional_expected.median,
+            "trimmed_mean": conditional_expected.trimmed_mean,
+            "recency_weighted": conditional_expected.recency_weighted,
+            "timing_method": conditional_expected.timing_method,
+            "n_observations": conditional_expected.n_observations,
+            "data_quality": conditional_expected.data_quality,
+            "conditioning_applied": conditional_expected.conditioning_applied,
+            "primary_estimate": conditional_expected.primary_estimate,
+            "peer_conditioned": conditional_expected.peer_conditioned,
+        },
+        "timing_splits": {
+            "amc": len(timing_splits.get("amc", [])),
+            "bmo": len(timing_splits.get("bmo", [])),
+            "unknown": len(timing_splits.get("unknown", [])),
+        },
         "move_model_selected": args.move_model,
         "move_model_default": config.MOVE_MODEL_DEFAULT,
         "fat_tail_calibration": fat_tail_inputs,
         "simulation_comparison": simulation_comparison,
         "rr25": rr25_value,
         "bf25": bf25_value,
+        "rr25_raw": rr25_raw,
+        "bf25_raw": bf25_raw,
         "ev_base": ev_base,
         "ev_2x": ev_2x,
     }
@@ -1326,6 +1384,11 @@ def _print_console_snapshot(
         print("REGIME CLASSIFICATION")
         print("=" * 60)
         print(f"Vol Pricing:          {regime['vol_regime']}")
+        if regime.get("vol_regime_legacy"):
+            print(f"Vol Pricing (legacy): {regime['vol_regime_legacy']}")
+        if regime.get("ivr") is not None and regime.get("ivp") is not None:
+            print(f"IVR / IVP:            {regime['ivr']:.1f} / {regime['ivp']:.1f}")
+            print(f"Vol Confidence:       {regime.get('vol_confidence_label', 'LOW')}")
         print(f"Event Structure:      {regime['event_regime']}")
         print(f"Term Structure:       {regime['term_structure_regime']}")
         print(f"Gamma Regime:         {regime['gamma_regime']}")
@@ -1341,6 +1404,55 @@ def _print_console_snapshot(
     if gex.get("gamma_flip"):
         print(f"Gamma Flip: {gex['gamma_flip']:.2f}")
     print("=" * 60)
+
+
+def _resolve_event_timing_bucket(
+    ticker: str,
+    event_date: dt.date,
+    *,
+    fallback_split: dict[str, list[float]],
+) -> str:
+    """Resolve target timing bucket for conditional expected move.
+
+    Preference order:
+    1) exact event_date label from event registry
+    2) inferred dominant bucket from historical split counts
+    """
+
+    db_path = Path("data/options_intraday.db")
+    if db_path.exists():
+        try:
+            from data.option_data_store import create_store
+
+            store = create_store(db_path)
+            registry = store.get_event_registry()
+            if not registry.empty:
+                mask = (
+                    registry["underlying_symbol"].astype(str).str.upper()
+                    == ticker.upper()
+                ) & (registry["event_date"] == event_date)
+                exact = registry[mask]
+                if not exact.empty:
+                    label = str(exact.iloc[0].get("event_time_label") or "")
+                    normalized = label.strip().lower()
+                    if normalized in {"ah", "amc", "after close", "after hours"}:
+                        return "amc"
+                    if normalized in {
+                        "am",
+                        "bmo",
+                        "before open",
+                        "pre market",
+                        "pre-market",
+                    }:
+                        return "bmo"
+        except Exception:  # pragma: no cover
+            LOGGER.debug("Could not resolve event timing from registry.", exc_info=True)
+
+    amc_count = len(fallback_split.get("amc", []))
+    bmo_count = len(fallback_split.get("bmo", []))
+    if amc_count == 0 and bmo_count == 0:
+        return "unknown"
+    return "amc" if amc_count >= bmo_count else "bmo"
 
 
 if __name__ == "__main__":

@@ -35,30 +35,43 @@ def _percentile_rank(value: float, population: List[float]) -> float:
 def _scaled_sign(value: float, desired_positive: bool, scale: float) -> float:
     """
     Maps value onto [0,1] relative to scale.
-    
+
     Args:
         value: The exposure value (gamma or vega)
         desired_positive: True if long exposure preferred
         scale: Median absolute exposure across strategies for normalization
-    
+
     Returns:
         Score in [0, 1] where 1 = fully aligned, 0 = opposed, 0.5 = neutral
     """
     if scale == 0:
         return 0.5
-    
+
     normalized = max(min(value / scale, 1.0), -1.0)
-    
+
     if desired_positive:
         return (normalized + 1.0) / 2.0
     else:
         return (1.0 - normalized) / 2.0
 
 
+def _normalize_vol_regime(regime: dict) -> str:
+    """Normalize legacy and playbook vol labels to one canonical set."""
+
+    value = regime.get("vol_regime") or regime.get("vol_label")
+    if value in {"CHEAP", "Tail Underpriced"}:
+        return "CHEAP"
+    if value in {"EXPENSIVE", "Tail Overpriced"}:
+        return "EXPENSIVE"
+    if value in {"AMBIGUOUS"}:
+        return "AMBIGUOUS"
+    return "NEUTRAL"
+
+
 def compute_alignment(strategy: dict, regime: dict, population_stats: dict) -> dict:
     """
     Compute how well a strategy's structural exposures match the detected regime.
-    
+
     Parameters
     ----------
     strategy : dict
@@ -68,13 +81,13 @@ def compute_alignment(strategy: dict, regime: dict, population_stats: dict) -> d
     population_stats : dict
         Must contain: median_abs_gamma, median_abs_vega, convexities (list),
                       cvars (list of negative numbers)
-    
+
     Returns
     -------
     dict with alignment_score, alignment_weighted, alignment_breakdown,
     and alignment_heatmap for visualization.
     """
-    
+
     # ─── Axis 1: Gamma ────────────────────────────────────────────────────
     gamma_regime = regime.get("gamma_regime", "Neutral Gamma")
     gamma_preference = _gamma_preference(gamma_regime)
@@ -85,65 +98,63 @@ def compute_alignment(strategy: dict, regime: dict, population_stats: dict) -> d
         gamma_score = _scaled_sign(
             strategy.get("net_gamma", 0.0),
             desired_positive=True,
-            scale=population_stats.get("median_abs_gamma", 1.0)
+            scale=population_stats.get("median_abs_gamma", 1.0),
         )
     else:
         gamma_score = _scaled_sign(
             strategy.get("net_gamma", 0.0),
             desired_positive=False,
-            scale=population_stats.get("median_abs_gamma", 1.0)
+            scale=population_stats.get("median_abs_gamma", 1.0),
         )
-    
+
     # ─── Axis 2: Vega ─────────────────────────────────────────────────────
-    vol_regime = regime.get("vol_regime", "Fairly Priced")
-    
-    if vol_regime == "Tail Underpriced":
+    vol_regime = _normalize_vol_regime(regime)
+
+    if vol_regime == "CHEAP":
         vega_score = _scaled_sign(
             strategy.get("net_vega", 0.0),
             desired_positive=True,
-            scale=population_stats.get("median_abs_vega", 1.0)
+            scale=population_stats.get("median_abs_vega", 1.0),
         )
-    elif vol_regime == "Tail Overpriced":
+    elif vol_regime == "EXPENSIVE":
         vega_score = _scaled_sign(
             strategy.get("net_vega", 0.0),
             desired_positive=False,
-            scale=population_stats.get("median_abs_vega", 1.0)
+            scale=population_stats.get("median_abs_vega", 1.0),
         )
     else:
         vega_score = 0.5
-    
+
     # ─── Axis 3: Convexity ────────────────────────────────────────────────
     composite = regime.get("composite_regime", "Mixed / Transitional Setup")
     conv_rank = _percentile_rank(
-        strategy.get("convexity", 0.0),
-        population_stats.get("convexities", [])
+        strategy.get("convexity", 0.0), population_stats.get("convexities", [])
     )
-    
+
     if composite == "Convex Breakout Setup":
         convexity_score = conv_rank  # high convexity aligned
     elif composite == "Premium Harvest Setup":
         convexity_score = 1.0 - conv_rank  # low convexity aligned
     else:
         convexity_score = 0.5
-    
+
     # ─── Axis 4: Tail Risk (CVaR) ─────────────────────────────────────────
     # CVaR is a negative number - more negative = heavier tail loss
     # percentile rank of cvar: 0 = best (least negative), 1 = worst
     cvar_rank = _percentile_rank(
-        strategy.get("cvar", 0.0),
-        population_stats.get("cvars", [])
+        strategy.get("cvar", 0.0), population_stats.get("cvars", [])
     )
-    
+
     # For tail underpriced: prefer strategies with less severe CVaR (low rank)
-    if vol_regime == "Tail Underpriced":
+    if vol_regime == "CHEAP":
         tail_score = 1.0 - cvar_rank
     else:
         tail_score = 0.5
-    
+
     # ─── Composite ────────────────────────────────────────────────────────
     alignment_score = (gamma_score + vega_score + convexity_score + tail_score) / 4.0
     alignment_weighted = alignment_score * regime.get("confidence", 0.5)
-    
+
     return {
         "alignment_score": round(alignment_score, 3),
         "alignment_weighted": round(alignment_weighted, 3),
@@ -159,7 +170,7 @@ def compute_alignment(strategy: dict, regime: dict, population_stats: dict) -> d
             "Vega": round(vega_score, 3),
             "Convexity": round(convexity_score, 3),
             "Tail Risk": round(tail_score, 3),
-        }
+        },
     }
 
 
@@ -167,7 +178,7 @@ def compute_all_alignments(strategies: list, regime: dict) -> None:
     """
     Mutates each strategy dict in-place.
     Computes population stats first, then scores per strategy.
-    
+
     Parameters
     ----------
     strategies : list of dict
@@ -180,14 +191,14 @@ def compute_all_alignments(strategies: list, regime: dict) -> None:
     vegas = [abs(s.get("net_vega", 0.0)) for s in strategies]
     convexities = [s.get("convexity", 0.0) for s in strategies]
     cvars = [s.get("cvar", 0.0) for s in strategies]
-    
+
     population_stats = {
         "median_abs_gamma": float(np.median(gammas)) if gammas else 1.0,
         "median_abs_vega": float(np.median(vegas)) if vegas else 1.0,
         "convexities": convexities,
         "cvars": cvars,
     }
-    
+
     # Compute alignment for each strategy and mutate in-place
     for s in strategies:
         s["alignment"] = compute_alignment(s, regime, population_stats)

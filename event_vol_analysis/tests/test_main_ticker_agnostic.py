@@ -53,6 +53,10 @@ def test_main_uses_explicit_non_nvda_ticker_in_test_data_mode(
     assert captured["context"]["ticker"] == "TSLA"
     assert captured["context"]["generic_event"]["underlying"] == "TSLA"
     assert captured["path"] == Path("reports/tsla_earnings_report.html")
+    assert "conditional_expected" in captured["context"]["snapshot"]
+    assert "timing_splits" in captured["context"]["snapshot"]
+    assert "ivr" in captured["context"]["regime"]
+    assert "ivp" in captured["context"]["regime"]
 
 
 def test_load_tickers_from_file_supports_csv_and_newlines(tmp_path: Path) -> None:
