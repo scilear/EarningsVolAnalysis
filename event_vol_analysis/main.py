@@ -472,6 +472,146 @@ def _run_batch_mode(args: argparse.Namespace, tickers: list[str]) -> bool:
     return bool(summary["tickers_failed"] == 0)
 
 
+def _run_playbook_scan_mode(args: argparse.Namespace, tickers: list[str]) -> bool:
+    """Run playbook scan mode: condensed morning review with TYPE summary."""
+    from event_vol_analysis.reports.playbook_scan import (
+        # check_playbook_liquidity,  # Reserved for future pre-filtering
+        create_scan_row_from_snapshot,
+        sort_playbook_rows,
+        format_console_table,
+        save_playbook_scan_report,
+        PlaybookScanResult,
+        PlaybookScanRow,
+    )
+
+    output_dir = Path(args.batch_output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    rows: list[PlaybookScanRow] = []
+    filtered_out: list[PlaybookScanRow] = []
+
+    for ticker in tickers:
+        LOGGER.info("Playbook scan for %s", ticker)
+        analysis_summary_path = output_dir / f"{ticker.lower()}_analysis_summary.json"
+
+        # Build command for single ticker analysis
+        command = _batch_command_for_ticker(
+            args,
+            ticker,
+            Path(f"{ticker.lower()}_temp.html"),
+            analysis_summary_path=analysis_summary_path,
+        )
+
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            # Analysis failed - add to filtered with error
+            err_row = PlaybookScanRow(
+                ticker=ticker,
+                earnings_date="N/A",
+                vol_regime="N/A",
+                edge_ratio="N/A",
+                positioning="N/A",
+                signal="N/A",
+                type_=5,
+                confidence="N/A",
+                action="ANALYSIS ERROR",
+                is_type5=True,
+                error_message=f"rc={result.returncode}: {_extract_failure_reason(result)}",
+            )
+            filtered_out.append(err_row)
+            LOGGER.error(
+                "Playbook scan failed for %s: rc=%d", ticker, result.returncode
+            )
+            continue
+
+        # Load the generated snapshot JSON
+        if not analysis_summary_path.exists():
+            err_row = PlaybookScanRow(
+                ticker=ticker,
+                earnings_date="N/A",
+                vol_regime="N/A",
+                edge_ratio="N/A",
+                positioning="N/A",
+                signal="N/A",
+                type_=5,
+                confidence="N/A",
+                action="NO SNAPSHOT",
+                is_type5=True,
+                error_message="analysis_summary.json not generated",
+            )
+            filtered_out.append(err_row)
+            continue
+
+        try:
+            snapshot = json.loads(analysis_summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            err_row = PlaybookScanRow(
+                ticker=ticker,
+                earnings_date="N/A",
+                vol_regime="N/A",
+                edge_ratio="N/A",
+                positioning="N/A",
+                signal="N/A",
+                type_=5,
+                confidence="N/A",
+                action="JSON ERROR",
+                is_type5=True,
+                error_message="failed to parse analysis_summary.json",
+            )
+            filtered_out.append(err_row)
+            continue
+
+        # Check TYPE classification in snapshot
+        # (type_val extracted via create_scan_row_from_snapshot)
+
+        # Create a PlaybookScanRow from the snapshot
+        scan_row = create_scan_row_from_snapshot(ticker, snapshot)
+        rows.append(scan_row)
+
+    # Sort by TYPE (non-TYPE5 first)
+    rows = sort_playbook_rows(rows)
+
+    # Build result and compute summary
+    playbook_result = PlaybookScanResult(
+        rows=rows,
+        filtered_out=filtered_out,
+        frequency_warning_fired=False,
+    )
+    playbook_result.compute_summary()
+
+    # Print console table
+    console_output = format_console_table(rows)
+    print("\n" + console_output)
+
+    # Print filtered out section
+    if filtered_out:
+        print("\n" + "=" * 40)
+        print("FILTERED OUT")
+        print("=" * 40)
+        for frow in filtered_out:
+            reason = frow.filter_reason or frow.error_message or "unknown"
+            print(f"  {frow.ticker}: {reason}")
+
+    # Print frequency warning if present
+    if playbook_result.frequency_warning_fired:
+        print("\n" + "!" * 40)
+        print("FREQUENCY WARNING: >10% of universe is TYPE 1")
+        print("Cheapness metric may be miscalibrated.")
+        print("!" * 40)
+
+    # Save report
+    report_path = save_playbook_scan_report(playbook_result, output_dir)
+    LOGGER.info("Playbook scan report saved to %s", report_path)
+
+    return True
+
+
 def main() -> None:
     """Run earnings vol analysis pipeline."""
     parser = argparse.ArgumentParser(description="Earnings vol analysis")
@@ -574,6 +714,16 @@ def main() -> None:
         default=None,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="deep-dive",
+        choices=["deep-dive", "playbook-scan"],
+        help=(
+            "Report mode: 'deep-dive' for full per-ticker HTML, "
+            "'playbook-scan' for condensed morning scan table (default: %(default)s)"
+        ),
+    )
     args = parser.parse_args()
     if not hasattr(args, "move_model"):
         args.move_model = config.MOVE_MODEL_DEFAULT
@@ -597,6 +747,12 @@ def main() -> None:
     )
 
     if batch_requested:
+        mode = getattr(args, "mode", "deep-dive")
+        if mode == "playbook-scan":
+            ok = _run_playbook_scan_mode(args, tickers)
+            if not ok:
+                raise SystemExit(1)
+            return
         if args.output is not None:
             LOGGER.warning(
                 "--output is ignored in batch mode; using --batch-output-dir"
@@ -1365,6 +1521,24 @@ def main() -> None:
             "score": round(float(top.get("score", 0.0)), 4),
             "move_model": args.move_model,
             "blocking_warnings": blocking_warnings,
+            # Full TYPE classification for playbook scan
+            "vol_regime": {
+                "vol_regime": regime.get("vol_regime"),
+                "vol_regime_legacy": regime.get("vol_regime_legacy"),
+                "ivr": regime.get("ivr"),
+                "ivp": regime.get("ivp"),
+                "vol_confidence": regime.get("vol_confidence"),
+                "vol_confidence_label": regime.get("vol_confidence_label"),
+                "event_regime": regime.get("event_regime"),
+                "term_structure_regime": regime.get("term_structure_regime"),
+                "gamma_regime": regime.get("gamma_regime"),
+                "composite_regime": regime.get("composite_regime"),
+                "confidence": regime.get("confidence"),
+            },
+            "edge_ratio": snapshot.get("edge_ratio"),
+            "positioning": snapshot.get("positioning"),
+            "signal_graph": snapshot.get("signal_graph"),
+            "type_classification": snapshot.get("type_classification"),
         }
         summary_path = Path(analysis_summary_path)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
