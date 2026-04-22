@@ -40,8 +40,8 @@
 | T026 | Positioning proxy | P1 | - | completed |
 | T027 | TYPE 1-5 classifier | P1 | T023,T025,T026 | completed |
 | T028 | Signal graph | P1 | T027 | completed |
-| T029 | 4-layer batch report | P1 | T027,T028 | pending |
-| T030 | Post-earnings outcome tracking | P2 | T002,T027 | pending |
+| T029 | 4-layer batch report | P1 | T027,T028 | completed |
+| T030 | Post-earnings outcome tracking | P2 | T002,T027 | completed |
 | T031 | Calibration loop | P2 | T030 | pending |
 | T032 | Automated earnings season workflow | P2 | T029,T031 | pending |
 
@@ -90,7 +90,7 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T026 | tasks/task_026.md | completed |
 | T027 | tasks/task_027.md | completed |
 | T028 | tasks/task_028.md | completed |
-| T029 | tasks/task_029.md | pending   |
-| T030 | tasks/task_030.md | pending   |
+| T029 | tasks/task_029.md | completed |
+| T030 | tasks/task_030.md | completed |
 | T031 | tasks/task_031.md | pending   |
 | T032 | tasks/task_032.md | pending   |

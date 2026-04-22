@@ -458,6 +458,44 @@ Deliverable: extend T025 to accept an `event_type` tag and `vix_quartile` and fi
 
 ---
 
+**T038 — Macro Binary Event Outcomes Store**
+
+**What's needed (from K-012 v1.5 structural activation filter):**
+
+K-012 Tier B has a structural activation filter that requires a binary check: "has this event type produced a move >1 SD above implied in ≥2 prior analogous events?" This requires a persistent outcomes log for macro binary events — separate from the earnings outcomes log (T030), which is single-name earnings-focused.
+
+**Deliverable:**
+
+- New data store: `data/macro_event_outcomes/` — one YAML/JSON file per event, keyed by event_type + date
+- Schema per entry:
+  - `event_type`: geopolitical / FOMC / election / regulatory
+  - `event_date`: ISO date
+  - `underlying`: primary vehicle (SPY, XOP, etc.)
+  - `implied_move_pct`: ATM straddle implied move at entry
+  - `realized_move_pct`: actual underlying move from entry to post-event close
+  - `move_vs_implied_ratio`: realized / implied
+  - `vix_at_entry`: VIX level
+  - `vvix_percentile_at_entry`: rolling 1Y percentile
+  - `gex_zone`: Strong Amplified / Uncertain / Neutral / Pin
+  - `vol_crush`: IV change from entry to 1 session post-event (%)
+  - `notes`: free text
+- New query function `query_event_type_tail_rate(event_type, threshold_sd=1.0)`:
+  - Returns: count of events where move_vs_implied_ratio > threshold
+  - Returns: total events of that type in log
+  - Returns: binary flag `has_min_2_tail_events` (True/False)
+  - This is the direct input to K-012 Tier B activation filter condition #4
+
+**Population (manual initially):** Operator fills entries from the K-012 calibration log after each macro binary event. Auto-population of realized_move_pct can be added via price history lookup (same pattern as T030).
+
+**Acceptance criteria:**
+- At least 3 entries in the store (seeded from T-002 Iran/Hormuz events)
+- `query_event_type_tail_rate()` returns correct counts
+- K-012 playbook Section 2b can use the binary flag directly
+
+**Note:** This is also the primary data feed for T037 (regime-conditioned edge ratio). T038 should be built before T037 — T037 depends on this data.
+
+---
+
 ## Deferred Backlog (Valid, Not Frontline)
 
 - Broken-wing butterfly (structure coverage)

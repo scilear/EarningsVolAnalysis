@@ -80,6 +80,7 @@ from event_vol_analysis.data.test_data import (
     load_test_data,
     save_test_data,
 )
+from event_vol_analysis.outcomes import store_prediction
 from event_vol_analysis.regime import classify_regime
 from event_vol_analysis.reports.reporter import write_report
 from event_vol_analysis.simulation.monte_carlo import simulate_moves
@@ -1420,6 +1421,18 @@ def main() -> None:
         "is_no_trade": type_classification.is_no_trade,
         "frequency_warning": type_classification.frequency_warning,
     }
+
+    try:
+        store_prediction(
+            ticker=ticker,
+            event_date=event_date,
+            type_classification=snapshot["type_classification"],
+            edge_ratio=snapshot["edge_ratio"],
+            vol_regime=regime,
+            timing=resolved_event_timing.upper(),
+        )
+    except ValueError as exc:
+        LOGGER.info("Outcome prediction not stored (%s): %s", ticker, exc)
 
     # Compute alignment for all strategies
     compute_all_alignments(ranked, regime)
