@@ -400,7 +400,7 @@ automated cron workflow for morning earnings reviews.
    - Decision quality (good-process / bad-outcome separation)
    - Threshold adjustment gate: 20 obs minimum before suggesting changes
 
-3. **T032** — Automated earnings season workflow (daily cron + Telegram alerting) [next]
+3. **T032** — Automated earnings season workflow (daily cron + Telegram alerting) [completed]
    - Daily cron: pull calendar (next 10-14 days) → apply hard liquidity filters → run 4-layer snapshot → classify TYPE → Telegram alert for non-TYPE-5 names
    - Morning-scan report saved to `reports/daily/YYYY-MM-DD_playbook_scan.html`
    - Manual confirmation required for any entry (human-in-the-loop always)

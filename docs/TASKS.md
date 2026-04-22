@@ -43,7 +43,7 @@
 | T029 | 4-layer batch report | P1 | T027,T028 | completed |
 | T030 | Post-earnings outcome tracking | P2 | T002,T027 | completed |
 | T031 | Calibration loop | P2 | T030 | completed |
-| T032 | Automated earnings season workflow | P2 | T029,T031 | pending |
+| T032 | Automated earnings season workflow | P2 | T029,T031 | completed |
 
 ## Dependency Chains
 
@@ -93,4 +93,4 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T029 | tasks/task_029.md | completed |
 | T030 | tasks/task_030.md | completed |
 | T031 | tasks/task_031.md | completed |
-| T032 | tasks/task_032.md | pending   |
+| T032 | tasks/task_032.md | completed |
