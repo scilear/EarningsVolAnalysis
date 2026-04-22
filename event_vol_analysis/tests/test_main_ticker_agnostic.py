@@ -55,6 +55,10 @@ def test_main_uses_explicit_non_nvda_ticker_in_test_data_mode(
     assert captured["path"] == Path("reports/tsla_earnings_report.html")
     assert "conditional_expected" in captured["context"]["snapshot"]
     assert "timing_splits" in captured["context"]["snapshot"]
+    assert "edge_ratio" in captured["context"]["snapshot"]
+    assert "positioning" in captured["context"]["snapshot"]
+    assert "signal_graph" in captured["context"]["snapshot"]
+    assert "type_classification" in captured["context"]["snapshot"]
     assert "ivr" in captured["context"]["regime"]
     assert "ivp" in captured["context"]["regime"]
 

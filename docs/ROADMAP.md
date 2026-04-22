@@ -39,35 +39,47 @@ Still weak:
 - Signal graph (upstream/downstream chain) entirely absent
 - No TYPE 1–5 classification engine
 - No post-earnings outcome tracking or calibration loop
-- Tasks 019/020/021 complete
 
 ---
 
-## Now — Close + Foundation
+## Just Closed — Foundation Complete
 
-**Objective:** finish open infrastructure so batch analysis is reliable and
+Infrastructure work (T019, T020, T021) completed. Batch runs now reliable and
 auto-ingested.
 
 | ID | Task | Status |
 |----|------|--------|
-| 019 | Multi-ticker batch mode — integrate auto-ingestion into batch | pending |
-| 020 | Earnings calendar auto-ingestion — document source limitations | pending |
+| 019 | Multi-ticker batch mode — integrate auto-ingestion into batch | completed |
+| 020 | Earnings calendar auto-ingestion — document source limitations | completed |
+| 021 | Fat-tailed move distribution (calibrated, 18 tests passing) | completed |
+
+**Remaining foundation work (deprioritized, run as needed):**
+
+| ID | Task | Status |
+|----|------|--------|
 | 012 | Dependency and env cleanup | pending |
 | 013 | Test strategy for migration | pending |
 
-**Exit criteria:**
-
-- Batch runs complete on a list of 10-20 tickers without manual intervention.
-- Event date discovery failures are explicit and logged.
-- Smoke tests pass before and after.
-
 ---
 
-## Next — Playbook Alignment (4-Layer Snapshot)
+## Now — Playbook Alignment (4-Layer Snapshot) [P1]
 
 **Objective:** replace generic regime output with the exact 4-layer snapshot
 defined in `earnings-playbook.md`. Each layer produces a label + confidence
 rating. Together they feed the TYPE classifier in the phase after.
+
+**Execution path (priority order):**
+
+1. **T023** — IV Rank + IV Percentile dual classifier (foundation for vol regime)
+2. **T024** — Conditional expected move (foundation for edge ratio)
+3. **T025** — Edge ratio (CHEAP/FAIR/RICH label with confidence)
+4. **T026** — Positioning proxy (weak signals, tiebreaker only)
+
+**Exit criteria:**
+
+- All four layers produce label + confidence per name
+- Batch report includes all four layers
+- Regression smoke tests pass
 
 ### Task 023 — IV Rank + IV Percentile Dual Classifier
 
@@ -199,10 +211,23 @@ state. These are explicitly low-confidence tiebreakers, not primary signals.
 
 ---
 
-## After — Decision Engine
+## Then — Decision Engine [P1]
 
 **Objective:** encode the playbook TYPE 1–5 conditions as a deterministic
 classifier. The tool outputs a TYPE, not a ranking of structures.
+
+**Execution path (depends on T023–T026):**
+
+1. **T027** — TYPE 1–5 classifier (gates decision engine; optional signal graph)
+2. **T028** — Signal graph (optional; upgrades T027 confidence for TYPE 4 only)
+3. **T029** — 4-layer batch report with --mode playbook-scan CLI flag
+
+**Exit criteria:**
+
+- All batch outputs include TYPE classification (1–5)
+- TYPE 5 rationale is always explicit (what condition prevented another type)
+- TYPE 4 gets Phase 2 checklist (not a trade instruction)
+- Report saves to `reports/daily/` with date in filename
 
 ### Task 027 — TYPE 1–5 Classifier
 
@@ -356,36 +381,80 @@ per name, designed for a 5-10 minute morning review.
 
 ---
 
-## Later — Calibration Loop + Automation
+## After — Calibration Loop + Automation [P2]
 
 **Objective:** close the feedback loop — track edge ratio accuracy, TYPE
-classification quality, and no-trade accuracy week over week.
+classification quality, and no-trade accuracy week over week. Deploy daily
+automated cron workflow for morning earnings reviews.
 
-### Task 030 — Post-Earnings Outcome Tracking
+**Execution path (depends on T027 baseline; T029 strongly recommended):**
 
-- Record per-event: implied move, conditional expected move, edge ratio, TYPE
-  classification, actual realized move (close-to-close), Phase 1 category
-  (held vs overshoot), Phase 2 confirmed trade or no-trade
-- Store in event-store alongside existing outcome records
-- Auto-populate actual move from price history after event date passes
+1. **T030** — Post-earnings outcome tracking (schema + CLI script for operator data entry)
+   - Record per-event: TYPE classification, edge ratio, realized move, Phase 1/2 categories
+   - Auto-populate realized move from price history after event date passes
+   
+2. **T031** — Calibration loop (weekly report comparing ex-ante to ex-post)
+   - Edge ratio accuracy by label bucket
+   - TYPE classification accuracy per type number
+   - No-trade audit (TYPE 5 miss rate)
+   - Decision quality (good-process / bad-outcome separation)
+   - Threshold adjustment gate: 20 obs minimum before suggesting changes
 
-### Task 031 — Calibration Loop
+3. **T032** — Automated earnings season workflow (daily cron + Telegram alerting)
+   - Daily cron: pull calendar (next 10-14 days) → apply hard liquidity filters → run 4-layer snapshot → classify TYPE → Telegram alert for non-TYPE-5 names
+   - Morning-scan report saved to `reports/daily/YYYY-MM-DD_playbook_scan.html`
+   - Manual confirmation required for any entry (human-in-the-loop always)
 
-- Weekly report: edge ratio accuracy (implied vs realized), TYPE classification
-  accuracy (ex-ante TYPE vs what actually happened), no-trade audit (did skipped
-  names have exploitable moves?), decision quality (separate good-process /
-  bad-outcome from bad-process / good-outcome)
-- Threshold adjustment gate: 20 observations minimum before any parameter
-  change; emit a warning if data is insufficient for inference
-- Track by TYPE separately (TYPE 1 accuracy is different from TYPE 4 accuracy)
+**Exit criteria:**
 
-### Task 032 — Automated Earnings Season Workflow
+- Outcome records stored and queryable per event
+- Weekly calibration report generated and readable
+- Daily cron runs at 08:00 CET, sends Telegram alerts, saves report
+- Dry-run mode (--dry-run) suppresses Telegram and prints to console
 
-- Daily cron: pull calendar (next 10-14 days) → apply hard liquidity filters →
-  run 4-layer snapshot → classify TYPE → emit Telegram alert for any non-TYPE-5
-  name
-- Morning-scan report generated automatically and saved to `reports/daily/`
-- Manual confirmation still required for any entry (human-in-the-loop)
+---
+
+## Macro Binary Event Extension [P2] — from K-012
+
+**Context:** K-012 binary event playbook (InvestmentDeskAgents) uses GEX regime from this tool for Tier B (opportunistic) entries. Five data gaps block full K-012 integration. These are backlog items, not blocking current earnings work.
+
+| ID | Task | Needed For | Status |
+|----|------|-----------|--------|
+| T033 | Vanna exposure by underlying (∂(vega)/∂(spot)) | Dealer flow in stress regimes — governs forced delta hedging as vol moves | pending |
+| T034 | Charm exposure (∂(delta)/∂(time)) | Timing of forced delta hedging as DTE collapses | pending |
+| T035 | By-strike GEX breakdown (not just net/abs aggregate) | Pin risk identification by strike level | pending |
+| T036 | Macro event vehicle support (SPY, XOP, XLE, VIX options) | Current tool is earnings-focused; K-012 needs GEX for macro binary vehicles | pending |
+| T037 | Regime-conditioned edge ratio for macro event types | Edge ratio conditioned on VIX quartile + event type (geo/FOMC/election). Current T025 is unconditional | pending |
+
+**T033 — Vanna Exposure**
+
+Vanna = ∂(vega)/∂(spot) = ∂(delta)/∂(IV). When spot drops + IV rises, dealers with short vega positions must buy spot → amplifies moves. Knowing aggregate vanna helps predict whether a stress event creates forced dealer flows.
+
+Deliverable: `compute_vanna_exposure(chain)` → net vanna in dollar terms, per-name, alongside gex_net/gex_abs in regime output.
+
+**T034 — Charm Exposure**
+
+Charm = ∂(delta)/∂(time). As options approach expiry, dealer delta hedges decay/grow even without price moves. Near high-vol events (within 2–3 DTE), charm flows can dominate intraday vol.
+
+Deliverable: `compute_charm_exposure(chain, dte)` → net charm in delta-per-day terms.
+
+**T035 — By-Strike GEX Breakdown**
+
+Current `gex_net`/`gex_abs` are aggregates. Pin risk requires knowing WHERE gamma is concentrated. A net neutral GEX with large long gamma at $580 + large short gamma at $590 is very different from uniformly distributed gamma.
+
+Deliverable: strike-level GEX bar chart data in regime output, plus `identify_pin_strikes(chain)` → list of strikes with GEX magnitude >15% of total absolute GEX.
+
+**T036 — Macro Event Vehicle Support**
+
+Current regime module is tested against earnings-event option chains. Macro binary events use SPY (large cap index), VIX options, sector ETFs (XOP, XLE), and leveraged ETFs (UVXY). These have different chain structures, liquidity profiles, and GEX calculation nuances (VIX options especially are complex).
+
+Deliverable: validate and test regime.py against macro event vehicles. Expose any structural differences (VIX option GEX calculation needs separate treatment — VIX options are on a forward, not spot).
+
+**T037 — Regime-Conditioned Edge Ratio for Macro Events**
+
+Current T025 edge ratio uses unconditional historical median. For macro binaries: conditioning on (a) VIX quartile at event time, (b) event type (geopolitical / FOMC / election), and (c) prior events of the same type matters significantly. A geopolitical event edge ratio should not share a denominator with an FOMC event.
+
+Deliverable: extend T025 to accept an `event_type` tag and `vix_quartile` and filter historical comparison events to the same category. Requires event taxonomy from `docs/research/2026-04-08_macro_event_taxonomy_and_proxy_mapping.md`.
 
 ---
 
@@ -416,15 +485,39 @@ classification quality, and no-trade accuracy week over week.
 - No learned policy logic in the decision engine — all TYPE conditions are
   deterministic and rule-based.
 
-## Task Execution Order
+## Recommended Execution Order
 
+**Phase 1 [P1] — Playbook Alignment (4-Layer Snapshot):**
 ```
-Close now: 019 → 020 → 012/013
-Layer A:   023 (IVR/IVP dual classifier)
-Layer B:   024 (conditional expected move) → 025 (edge ratio)
-Layer C:   026 (positioning proxy)
-Engine:    027 (TYPE classifier) → 028 (signal graph) → 029 (batch report)
-Calibrate: 030 → 031 → 032
+T023 (IVR/IVP dual classifier)
+  ↓
+T024 (conditional expected move) → T025 (edge ratio)
+  ↓
+T026 (positioning proxy)
+```
+
+**Phase 2 [P1] — Decision Engine:**
+```
+T027 (TYPE 1–5 classifier, gates the system)
+  ↓
+T028 (signal graph, optional; upgrades T027 confidence)
+  ↓
+T029 (4-layer batch report + --mode playbook-scan)
+```
+
+**Phase 3 [P2] — Calibration + Automation (after T029 is working):**
+```
+T030 (post-earnings outcome tracking)
+  ↓
+T031 (calibration loop, weekly)
+  ↓
+T032 (daily cron workflow + Telegram)
+```
+
+**Optional (deprioritized):**
+```
+T012 (dependency cleanup)
+T013 (test strategy migration)
 ```
 
 ## Related Docs

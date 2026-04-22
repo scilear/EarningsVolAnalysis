@@ -34,12 +34,12 @@
 | T020 | Earnings calendar auto-ingestion | P1 | - | completed |
 | T021 | Fat-tailed move distribution | P1 | T022 | completed |
 | T022 | Regression smoke harness | P0 | T015 | completed |
-| T023 | IV Rank + IV Percentile dual classifier | P1 | T022 | pending |
-| T024 | Conditional expected move | P1 | T021 | pending |
-| T025 | Edge ratio | P1 | T024 | pending |
-| T026 | Positioning proxy | P1 | - | pending |
-| T027 | TYPE 1-5 classifier | P1 | T023,T025,T026 | pending |
-| T028 | Signal graph | P1 | T027 | pending |
+| T023 | IV Rank + IV Percentile dual classifier | P1 | T022 | completed |
+| T024 | Conditional expected move | P1 | T021 | completed |
+| T025 | Edge ratio | P1 | T024 | completed |
+| T026 | Positioning proxy | P1 | - | completed |
+| T027 | TYPE 1-5 classifier | P1 | T023,T025,T026 | completed |
+| T028 | Signal graph | P1 | T027 | completed |
 | T029 | 4-layer batch report | P1 | T027,T028 | pending |
 | T030 | Post-earnings outcome tracking | P2 | T002,T027 | pending |
 | T031 | Calibration loop | P2 | T030 | pending |
@@ -84,12 +84,12 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T020 | tasks/task_020.md | completed |
 | T021 | tasks/task_021.md | completed |
 | T022 | tasks/task_022.md | completed |
-| T023 | tasks/task_023.md | pending   |
-| T024 | tasks/task_024.md | pending   |
-| T025 | tasks/task_025.md | pending   |
-| T026 | tasks/task_026.md | pending   |
-| T027 | tasks/task_027.md | pending   |
-| T028 | tasks/task_028.md | pending   |
+| T023 | tasks/task_023.md | completed |
+| T024 | tasks/task_024.md | completed |
+| T025 | tasks/task_025.md | completed |
+| T026 | tasks/task_026.md | completed |
+| T027 | tasks/task_027.md | completed |
+| T028 | tasks/task_028.md | completed |
 | T029 | tasks/task_029.md | pending   |
 | T030 | tasks/task_030.md | pending   |
 | T031 | tasks/task_031.md | pending   |

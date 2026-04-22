@@ -31,6 +31,10 @@ from event_vol_analysis.analytics.bsm import (
     theta as bsm_theta,
 )
 from event_vol_analysis.analytics.event_vol import event_variance
+from event_vol_analysis.analytics.edge_ratio import (
+    EDGE_RATIO_LOW_CONFIDENCE_CAVEAT,
+    compute_edge_ratio,
+)
 from event_vol_analysis.analytics.gamma import gex_summary
 from event_vol_analysis.analytics.historical import (
     calibrate_fat_tail_inputs,
@@ -41,6 +45,18 @@ from event_vol_analysis.analytics.historical import (
     split_by_timing,
 )
 from event_vol_analysis.analytics.implied_move import implied_move_from_chain
+from event_vol_analysis.analytics.positioning import (
+    classify_positioning,
+    drift_vs_sector,
+    max_pain_distance,
+    oi_concentration,
+    pc_ratio_signal,
+)
+from event_vol_analysis.analytics.signal_graph import (
+    SignalGraphResult,
+    build_signal_graph_result,
+    load_signal_graph_config,
+)
 from event_vol_analysis.analytics.skew import skew_metrics
 from event_vol_analysis.analytics.vol_regime import load_atm_iv_history_from_store
 from event_vol_analysis.data.filters import (
@@ -82,6 +98,7 @@ from event_vol_analysis.strategies.scoring import (
     score_strategies,
 )
 from event_vol_analysis.strategies.structures import build_strategies
+from event_vol_analysis.strategies.type_classifier import classify_type
 from event_vol_analysis.utils import business_days
 from event_vol_analysis.viz.plots import (
     plot_move_comparison,
@@ -771,6 +788,8 @@ def main() -> None:
     elif resolved_event_timing == "unknown":
         conditional_expected = conditional_expected_move(abs_moves, timing="unknown")
 
+    edge_ratio = compute_edge_ratio(implied_move, conditional_expected)
+
     atm_iv_history = load_atm_iv_history_from_store(ticker)
 
     event_info = event_variance(
@@ -807,6 +826,21 @@ def main() -> None:
     gex = gex_summary(front_chain, spot, t_front, div_yield=div_yield)
     back_gex_result = gex_summary(back1_chain, spot, t_back1_gex, div_yield=div_yield)
     skew = skew_metrics(front_chain, spot, t_front, div_yield=div_yield)
+
+    pc_5d, pc_20d_avg = _estimate_put_call_proxy(front_chain)
+    ticker_10d_ret = _compute_recent_return(history, days=10)
+    sector_10d_ret = None
+    positioning = classify_positioning(
+        oi_concentration(front_chain),
+        pc_ratio_signal(pc_5d, pc_20d_avg),
+        drift_vs_sector(ticker_10d_ret, sector_10d_ret),
+        max_pain_distance(front_chain, spot),
+    )
+
+    signal_graph = _build_single_ticker_signal_graph(
+        ticker=ticker,
+        event_date=event_date,
+    )
 
     gex_large_abs = cal.get("gex_large_abs", config.GEX_LARGE_ABS)
     gex_note = None
@@ -1124,6 +1158,60 @@ def main() -> None:
             "primary_estimate": conditional_expected.primary_estimate,
             "peer_conditioned": conditional_expected.peer_conditioned,
         },
+        "edge_ratio": {
+            "implied": edge_ratio.implied,
+            "conditional_expected_primary": edge_ratio.conditional_expected_primary,
+            "ratio": edge_ratio.ratio,
+            "label": edge_ratio.label,
+            "confidence": edge_ratio.confidence,
+            "secondary_ratio": edge_ratio.secondary_ratio,
+            "label_disagreement": edge_ratio.label_disagreement,
+            "note": edge_ratio.note,
+            "low_confidence_caveat": EDGE_RATIO_LOW_CONFIDENCE_CAVEAT,
+        },
+        "positioning": {
+            "label": positioning.label,
+            "direction": positioning.direction,
+            "confidence": positioning.confidence,
+            "available_count": positioning.available_count,
+            "note": positioning.note,
+            "signals": {
+                name: {
+                    "signal": signal.signal.value,
+                    "is_available": signal.is_available,
+                    "note": signal.note,
+                }
+                for name, signal in positioning.signals.items()
+            },
+        },
+        "signal_graph": {
+            "edges": [
+                {
+                    "source": edge.source,
+                    "target": edge.target,
+                    "revenue_overlap": edge.revenue_overlap,
+                    "factor_overlap": edge.factor_overlap,
+                    "weight": edge.weight,
+                }
+                for edge in signal_graph.edges
+            ],
+            "nodes": {
+                symbol: {
+                    "ticker": node.ticker,
+                    "role": node.role,
+                    "event_date": node.event_date.isoformat(),
+                    "has_signal": node.has_signal,
+                    "signal_decay_status": node.signal_decay_status,
+                }
+                for symbol, node in signal_graph.nodes.items()
+            },
+            "tradeable_followers": [
+                node.ticker for node in signal_graph.tradeable_followers
+            ],
+            "absorbed_followers": [
+                node.ticker for node in signal_graph.absorbed_followers
+            ],
+        },
         "timing_splits": {
             "amc": len(timing_splits.get("amc", [])),
             "bmo": len(timing_splits.get("bmo", [])),
@@ -1146,6 +1234,36 @@ def main() -> None:
     # Classify regime
     regime = classify_regime(snapshot)
     snapshot["regime"] = regime
+
+    event_state = {
+        "event_date": event_date,
+        "today": today,
+        "phase1_category": None,
+        "phase1_metrics": {
+            "move_vs_implied": None,
+        },
+    }
+    type_classification = classify_type(
+        vol_regime=regime,
+        edge_ratio=snapshot["edge_ratio"],
+        positioning=snapshot["positioning"],
+        signal_graph=signal_graph,
+        event_state=event_state,
+        operator_inputs={
+            "falsifier": None,
+            "narrative_label": None,
+            "has_position": None,
+        },
+    )
+    snapshot["type_classification"] = {
+        "type": type_classification.type,
+        "rationale": type_classification.rationale,
+        "action_guidance": type_classification.action_guidance,
+        "phase2_checklist": type_classification.phase2_checklist,
+        "confidence": type_classification.confidence,
+        "is_no_trade": type_classification.is_no_trade,
+        "frequency_warning": type_classification.frequency_warning,
+    }
 
     # Compute alignment for all strategies
     compute_all_alignments(ranked, regime)
@@ -1223,6 +1341,7 @@ def main() -> None:
         ev_2x,
         gex,
         regime,
+        snapshot,
     )
 
     analysis_summary_path = getattr(args, "analysis_summary_json", None)
@@ -1318,6 +1437,77 @@ def _filter_chain_for_test(
     return chain
 
 
+def _estimate_put_call_proxy(chain: pd.DataFrame) -> tuple[float | None, float | None]:
+    """Estimate put/call proxies from current chain volume when available."""
+
+    if "volume" not in chain.columns or "option_type" not in chain.columns:
+        return None, None
+
+    frame = chain.copy()
+    frame["volume"] = pd.to_numeric(frame["volume"], errors="coerce").fillna(0.0)
+    frame["option_type"] = frame["option_type"].astype(str).str.lower()
+    call_volume = float(frame.loc[frame["option_type"] == "call", "volume"].sum())
+    put_volume = float(frame.loc[frame["option_type"] == "put", "volume"].sum())
+    if call_volume <= 0.0:
+        return None, None
+
+    ratio = put_volume / call_volume
+    return ratio, ratio
+
+
+def _compute_recent_return(history: pd.DataFrame, days: int = 10) -> float | None:
+    """Compute simple close-to-close return over trailing N sessions."""
+
+    if history.empty or "Close" not in history.columns:
+        return None
+
+    closes = pd.to_numeric(history["Close"], errors="coerce").dropna()
+    if len(closes) <= days:
+        return None
+
+    start = float(closes.iloc[-(days + 1)])
+    end = float(closes.iloc[-1])
+    if start <= 0.0:
+        return None
+    return end / start - 1.0
+
+
+def _build_single_ticker_signal_graph(
+    ticker: str,
+    event_date: dt.date,
+) -> SignalGraphResult:
+    """Build one-name signal graph with config-backed metadata."""
+
+    try:
+        sector_map, factor_map = load_signal_graph_config()
+    except (FileNotFoundError, ValueError):
+        return build_signal_graph_result(
+            pd.DataFrame(columns=["ticker", "event_date", "sector", "factors"]),
+            {},
+            {},
+            dt.date.today(),
+            {},
+        )
+
+    calendar_df = pd.DataFrame(
+        [
+            {
+                "ticker": ticker,
+                "event_date": event_date,
+                "sector": None,
+                "factors": None,
+            }
+        ]
+    )
+    return build_signal_graph_result(
+        calendar_df,
+        sector_map,
+        factor_map,
+        dt.date.today(),
+        price_moves={},
+    )
+
+
 def _load_filtered_chain(
     expiry: dt.date | None,
     spot: float,
@@ -1368,6 +1558,7 @@ def _print_console_snapshot(
     ev_2x: float,
     gex: dict,
     regime: dict | None = None,
+    snapshot: dict | None = None,
 ) -> None:
     print("\n" + "=" * 60)
     print("VOLATILITY DIAGNOSTICS")
@@ -1394,6 +1585,26 @@ def _print_console_snapshot(
         print(f"Gamma Regime:         {regime['gamma_regime']}")
         print(f"Composite Regime:     {regime['composite_regime']}")
         print(f"Composite Confidence: {regime['confidence']:.2f}")
+
+    if snapshot and snapshot.get("edge_ratio"):
+        edge = snapshot["edge_ratio"]
+        print("\n" + "=" * 60)
+        print("EDGE RATIO")
+        print("=" * 60)
+        print(f"Ratio:                {edge['ratio']:.3f}")
+        print(f"Label:                {edge['label']}")
+        print(f"Confidence:           {edge['confidence']}")
+        if edge.get("confidence") == "LOW":
+            print(EDGE_RATIO_LOW_CONFIDENCE_CAVEAT)
+
+    if snapshot and snapshot.get("type_classification"):
+        t = snapshot["type_classification"]
+        print("\n" + "=" * 60)
+        print("TYPE CLASSIFICATION")
+        print("=" * 60)
+        print(f"TYPE:                 {t['type']}")
+        print(f"Confidence:           {t['confidence']}")
+        print(f"Action:               {t['action_guidance']}")
 
     print("\n" + "=" * 60)
     print("MICROSTRUCTURE DIAGNOSTICS")

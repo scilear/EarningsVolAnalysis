@@ -146,6 +146,46 @@ HTML_TEMPLATE = """\
     </table>
   </div>
 
+  {% if snapshot.type_classification %}
+  <h2>TYPE Classification</h2>
+  <table>
+    <tr>
+      <th>TYPE</th>
+      <td><strong>{{ snapshot.type_classification.type }}</strong></td>
+      <th>Confidence</th>
+      <td>{{ snapshot.type_classification.confidence }}</td>
+    </tr>
+    <tr>
+      <th>No-Trade</th>
+      <td>{{ snapshot.type_classification.is_no_trade }}</td>
+      <th>Frequency Warning</th>
+      <td>{{ snapshot.type_classification.frequency_warning }}</td>
+    </tr>
+    <tr>
+      <th>Action Guidance</th>
+      <td colspan="3">{{ snapshot.type_classification.action_guidance }}</td>
+    </tr>
+  </table>
+  {% if snapshot.type_classification.phase2_checklist %}
+  <h4>TYPE 4 Phase 2 Checklist</h4>
+  <ul>
+    {% for item in snapshot.type_classification.phase2_checklist %}
+    <li>{{ item }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if snapshot.type_classification.rationale %}
+  <details>
+    <summary>TYPE Rule Checks (pass/fail)</summary>
+    <div class="rationale-body">
+      {% for item in snapshot.type_classification.rationale %}
+      <div>{{ item }}</div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+  {% endif %}
+
   <h2>Volatility Regime Summary</h2>
 
   <table>
@@ -298,6 +338,105 @@ HTML_TEMPLATE = """\
       <td>
         {% if snapshot.conditional_expected.conditioning_applied %}
           {{ snapshot.conditional_expected.conditioning_applied | join(", ") }}
+        {% else %}
+          none
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+  {% endif %}
+
+  {% if snapshot.edge_ratio %}
+  <h4>Edge Ratio (Implied / Conditional Expected)</h4>
+  <table>
+    <tr>
+      <th>Implied Move</th>
+      <td>{{ "%.2f" | format(snapshot.edge_ratio.implied * 100) }}%</td>
+      <th>Conditional Primary</th>
+      <td>{{ "%.2f" | format(snapshot.edge_ratio.conditional_expected_primary * 100) }}%</td>
+    </tr>
+    <tr>
+      <th>Edge Ratio</th>
+      <td>{{ "%.3f" | format(snapshot.edge_ratio.ratio) }}</td>
+      <th>Label / Confidence</th>
+      <td><strong>{{ snapshot.edge_ratio.label }}</strong> / {{ snapshot.edge_ratio.confidence }}</td>
+    </tr>
+    <tr>
+      <th>Secondary Ratio</th>
+      <td>
+        {% if snapshot.edge_ratio.secondary_ratio is not none %}
+          {{ "%.3f" | format(snapshot.edge_ratio.secondary_ratio) }}
+        {% else %}
+          N/A
+        {% endif %}
+      </td>
+      <th>Label Disagreement</th>
+      <td>{{ snapshot.edge_ratio.label_disagreement }}</td>
+    </tr>
+    <tr>
+      <th>Note</th>
+      <td colspan="3">{{ snapshot.edge_ratio.note }}</td>
+    </tr>
+  </table>
+  {% if snapshot.edge_ratio.confidence == "LOW" %}
+  <p class="note"><strong>{{ snapshot.edge_ratio.low_confidence_caveat }}</strong></p>
+  {% endif %}
+  {% endif %}
+
+  {% if snapshot.positioning %}
+  <h4>Positioning Proxy</h4>
+  <table>
+    <tr>
+      <th>Label</th>
+      <td><strong>{{ snapshot.positioning.label }}</strong></td>
+      <th>Direction</th>
+      <td>{{ snapshot.positioning.direction or "N/A" }}</td>
+    </tr>
+    <tr>
+      <th>Confidence</th>
+      <td>{{ snapshot.positioning.confidence }}</td>
+      <th>Available Signals</th>
+      <td>{{ snapshot.positioning.available_count }}/4</td>
+    </tr>
+    <tr>
+      <th>Summary</th>
+      <td colspan="3">{{ snapshot.positioning.note }}</td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <th>Signal</th>
+      <th>Value</th>
+      <th>Available</th>
+      <th>Note</th>
+    </tr>
+    {% for name, signal in snapshot.positioning.signals.items() %}
+    <tr>
+      <td>{{ name }}</td>
+      <td>{{ signal.signal }}</td>
+      <td>{{ signal.is_available }}</td>
+      <td>{{ signal.note }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if snapshot.signal_graph %}
+  <h4>Signal Graph</h4>
+  <table>
+    <tr>
+      <th>Tradeable Followers</th>
+      <td>
+        {% if snapshot.signal_graph.tradeable_followers %}
+          {{ snapshot.signal_graph.tradeable_followers | join(", ") }}
+        {% else %}
+          none
+        {% endif %}
+      </td>
+      <th>Absorbed Followers</th>
+      <td>
+        {% if snapshot.signal_graph.absorbed_followers %}
+          {{ snapshot.signal_graph.absorbed_followers | join(", ") }}
         {% else %}
           none
         {% endif %}
