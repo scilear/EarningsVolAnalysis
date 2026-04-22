@@ -496,11 +496,30 @@ K-012 Tier B has a structural activation filter that requires a binary check: "h
 
 ---
 
+## Structure Advisor — Generic Payoff Query Interface [P2]
+
+**Context:** vol-specialist agent currently loads full option chains into context to price structures. This moves quantitative analysis into the tool and returns a compact comparison table to the agent.
+
+**Full spec:** `docs/STRUCTURE_ADVISOR_SPEC.md`
+
+| ID | Task | Depends on | Status |
+|----|------|------------|--------|
+| T039 | Structure library + payoff-type mapping | structures.py diagonal/risk-reversal additions | pending |
+| T040 | `structure_advisor.py` core — query, price, gate, rank | T039 | pending |
+| T041 | CLI `earningsvol query` + agent skill integration | T040 | pending |
+
+**Exit criteria:**
+- `earningsvol query --payoff crash --ticker GLD --expiry 2026-05-15 --spot 429.57` returns a ranked comparison table in ≤60 lines
+- No raw chain data enters agent context
+- Naked short structures hard-blocked; diagonal flagged with conditional cost note
+
+---
+
 ## Deferred Backlog (Valid, Not Frontline)
 
 - Broken-wing butterfly (structure coverage)
-- Diagonal spread (structure coverage)
-- Risk reversal (structure coverage)
+- Diagonal spread (structure coverage) — **pulled forward into T039**
+- Risk reversal (structure coverage) — **pulled forward into T039**
 - Jade lizard, 1×2 ratio spread (structure coverage)
 - Skew-dynamics modeling
 - Early assignment warning layer
