@@ -494,7 +494,7 @@ Correct three-step flow:
 
 ## T043 — Pre-Market Same-Day Earnings Window [P1]
 
-Status: in_progress
+Status: completed
 
 Ownership note: this task is fully in-repo (EarningsVolAnalysis). Unlike T041,
 it has no cross-repo documentation dependency.
@@ -547,6 +547,14 @@ it has no cross-repo documentation dependency.
 - Pre-market scan assumes valid options data available (unlikely true at 3:45 AM ET; use test-data mode for validation)
 - Operator can skip this scan if no market data available; T032 still captures the same names 14+ days forward
 - Daily reports will show same names in both pre-market and 10-14 day windows on days with same-day earnings
+
+Completion note:
+- Implemented in `event_vol_analysis/workflow/daily_scan.py` via
+  `--mode pre-market` + `--date`
+- Added `scripts/run_pre_market_scan.sh`
+- Added pre-market cron entry in `crontab.txt`
+- Added/updated workflow tests in
+  `event_vol_analysis/tests/test_daily_scan_workflow.py`
 
 ---
 

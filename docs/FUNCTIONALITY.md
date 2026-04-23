@@ -19,6 +19,8 @@ trade idea review.
 ### Primary Entry Point
 
 - `python -m event_vol_analysis.main`
+- `./earningsvol query`
+- `python -m event_vol_analysis.workflow.daily_scan --mode pre-market`
 
 ### Common Commands
 
@@ -49,6 +51,25 @@ Batch run:
   --tickers NVDA TSLA MSFT \
   --test-data \
   --batch-output-dir reports/batch
+```
+
+Structure Advisor query:
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python earningsvol query \
+  --payoff crash \
+  --ticker GLD \
+  --expiry 2026-05-15 \
+  --spot 429.57
+```
+
+Pre-market same-day scan:
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --mode pre-market \
+  --date 2026-05-01
 ```
 
 ### Inputs

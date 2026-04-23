@@ -84,10 +84,12 @@ from event_vol_analysis.outcomes import store_prediction
 from event_vol_analysis.regime import classify_regime
 from event_vol_analysis.reports.reporter import write_report
 from event_vol_analysis.simulation.monte_carlo import simulate_moves
+from event_vol_analysis.structure_advisor import query_structures
 from event_vol_analysis.strategies.backspreads import (
     build_call_backspread,
     build_put_backspread,
 )
+from event_vol_analysis.strategies.payoff_map import PayoffType
 from event_vol_analysis.strategies.payoff import strategy_pnl_vec
 from event_vol_analysis.strategies.post_event_calendar import (
     build_post_event_calendar,
@@ -173,6 +175,99 @@ STRATEGY_RATIONALE: dict[str, str] = {
         "the short and long strikes."
     ),
 }
+
+
+def _run_query_cli(argv: list[str]) -> int:
+    """Run `query` subcommand for the Structure Advisor."""
+    parser = argparse.ArgumentParser(
+        prog="earningsvol query",
+        description="Price and compare structures by payoff intent",
+    )
+    parser.add_argument(
+        "--payoff",
+        type=str,
+        required=True,
+        choices=[item.value for item in PayoffType],
+        help="Payoff intent to query",
+    )
+    parser.add_argument("--ticker", type=str, required=True, help="Underlying ticker")
+    parser.add_argument(
+        "--expiry",
+        type=str,
+        required=True,
+        help="Front expiry date in YYYY-MM-DD format",
+    )
+    parser.add_argument("--spot", type=float, required=True, help="Spot price")
+    parser.add_argument(
+        "--budget",
+        type=float,
+        default=None,
+        help="Optional max net debit budget",
+    )
+    parser.add_argument(
+        "--iv-percentile",
+        type=float,
+        default=None,
+        help="Optional IV percentile context",
+    )
+    parser.add_argument(
+        "--dte",
+        type=int,
+        default=None,
+        help="Optional DTE context override",
+    )
+    parser.add_argument(
+        "--vix",
+        type=float,
+        default=None,
+        help="Optional VIX context",
+    )
+    parser.add_argument(
+        "--validate",
+        type=str,
+        default=None,
+        help="Optional manual structure string to include",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="table",
+        choices=["table", "json"],
+        help="Output format",
+    )
+    args = parser.parse_args(argv)
+
+    context: dict[str, float | int | bool] = {}
+    if args.iv_percentile is not None:
+        context["iv_percentile"] = float(args.iv_percentile)
+    if args.dte is not None:
+        context["dte"] = int(args.dte)
+    if args.vix is not None:
+        context["vix"] = float(args.vix)
+
+    try:
+        result = query_structures(
+            payoff_type=args.payoff,
+            ticker=args.ticker,
+            expiry=args.expiry,
+            spot=float(args.spot),
+            budget=args.budget,
+            context=context,
+            validate=args.validate,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if result.data_unavailable:
+        print("DATA UNAVAILABLE: option chain fetch failed", file=sys.stderr)
+        return 1
+
+    if args.output == "json":
+        print(result.to_json())
+    else:
+        print(result.to_table())
+    return 0
 
 
 def _build_chain_lookup(
@@ -615,6 +710,9 @@ def _run_playbook_scan_mode(args: argparse.Namespace, tickers: list[str]) -> boo
 
 def main() -> None:
     """Run earnings vol analysis pipeline."""
+    if len(sys.argv) > 1 and sys.argv[1] == "query":
+        raise SystemExit(_run_query_cli(sys.argv[2:]))
+
     parser = argparse.ArgumentParser(description="Earnings vol analysis")
     ticker_group = parser.add_mutually_exclusive_group()
     ticker_group.add_argument(

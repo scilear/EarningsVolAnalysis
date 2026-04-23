@@ -7,7 +7,9 @@ import datetime as dt
 import json
 import logging
 import os
+import shutil
 import subprocess
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -30,6 +32,7 @@ from event_vol_analysis.reports.playbook_scan import (
     PlaybookScanRow,
     check_playbook_liquidity,
     create_scan_row_from_snapshot,
+    render_playbook_scan_html,
     save_playbook_scan_report,
     sort_playbook_rows,
 )
@@ -46,6 +49,8 @@ class ScanConfig:
     tickers: list[str]
     db_path: str
     output_dir: Path
+    mode: str
+    scan_date: dt.date
     days_ahead: int
     limit_per_ticker: int
     dry_run: bool
@@ -81,8 +86,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output-dir",
-        default="reports/daily",
-        help="Directory for daily playbook scan HTML report.",
+        default=None,
+        help=(
+            "Directory for scan HTML report. Defaults to reports/daily for "
+            "full-window mode and reports/pre-market for pre-market mode."
+        ),
     )
     parser.add_argument(
         "--days-ahead",
@@ -101,6 +109,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run analysis and print alerts without Telegram sends.",
     )
+    parser.add_argument(
+        "--mode",
+        default="full-window",
+        choices=["full-window", "pre-market"],
+        help=(
+            "Scan mode: full-window keeps T032 behavior (today to days-ahead), "
+            "pre-market scans one exact date."
+        ),
+    )
+    parser.add_argument(
+        "--date",
+        default=None,
+        help=(
+            "Scan date in YYYY-MM-DD. Defaults to today. In pre-market mode "
+            "this date is matched exactly."
+        ),
+    )
     return parser
 
 
@@ -112,16 +137,23 @@ def run(argv: list[str] | None = None) -> int:
     _configure_logging()
 
     tickers = _resolve_tickers(args.tickers, args.ticker_file)
+    try:
+        scan_date = _resolve_scan_date(args.date)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    output_dir = _resolve_output_dir(args.output_dir, args.mode)
     cfg = ScanConfig(
         tickers=tickers,
         db_path=args.db,
-        output_dir=Path(args.output_dir),
+        output_dir=output_dir,
+        mode=args.mode,
+        scan_date=scan_date,
         days_ahead=args.days_ahead,
         limit_per_ticker=args.limit,
         dry_run=args.dry_run,
     )
 
-    scan_date = dt.date.today()
     LOGGER.info("daily_scan start date=%s dry_run=%s", scan_date, cfg.dry_run)
     summary: dict[str, Any] = {
         "scan_date": scan_date.isoformat(),
@@ -129,14 +161,22 @@ def run(argv: list[str] | None = None) -> int:
         "filtered": 0,
         "actionable": 0,
         "report": None,
+        "mode": cfg.mode,
     }
 
     events = _fetch_upcoming_earnings_events(cfg)
     summary["universe"] = len(events)
 
     if not events:
-        message = _summary_message(scan_date, 0, 0, 0, report_path=None)
-        _notify(message, dry_run=cfg.dry_run)
+        message = _summary_message(
+            scan_date,
+            0,
+            0,
+            0,
+            report_path=None,
+            mode=cfg.mode,
+        )
+        _notify(message, dry_run=cfg.dry_run, mode=cfg.mode)
         _append_run_log(summary)
         return 0
 
@@ -156,8 +196,9 @@ def run(argv: list[str] | None = None) -> int:
             filtered=len(prefiltered_rows),
             actionable=0,
             report_path=None,
+            mode=cfg.mode,
         )
-        _notify(summary_message, dry_run=cfg.dry_run)
+        _notify(summary_message, dry_run=cfg.dry_run, mode=cfg.mode)
         _append_run_log(summary)
         return 0
 
@@ -171,7 +212,7 @@ def run(argv: list[str] | None = None) -> int:
     )
     result.compute_summary()
 
-    report_path = _safe_save_report(result, cfg.output_dir)
+    report_path = _safe_save_report(result, cfg.output_dir, cfg.mode, scan_date)
     summary["filtered"] = len(filtered_rows)
 
     actionable = [row for row in rows if row.type_ != 5]
@@ -179,8 +220,8 @@ def run(argv: list[str] | None = None) -> int:
     summary["report"] = str(report_path) if report_path else None
 
     for row in actionable:
-        alert = _format_telegram_alert(row, scan_date)
-        _notify(alert, dry_run=cfg.dry_run)
+        alert = _format_telegram_alert(row, scan_date, cfg.mode)
+        _notify(alert, dry_run=cfg.dry_run, mode=cfg.mode)
 
     summary_message = _summary_message(
         scan_date,
@@ -188,8 +229,9 @@ def run(argv: list[str] | None = None) -> int:
         filtered=len(filtered_rows),
         actionable=len(actionable),
         report_path=report_path,
+        mode=cfg.mode,
     )
-    _notify(summary_message, dry_run=cfg.dry_run)
+    _notify(summary_message, dry_run=cfg.dry_run, mode=cfg.mode)
 
     _append_run_log(summary)
     return 0
@@ -228,13 +270,13 @@ def _normalize_ticker_tokens(tokens: list[str]) -> list[str]:
 def _fetch_upcoming_earnings_events(cfg: ScanConfig) -> list[dict[str, Any]]:
     """Fetch calendar events and return unique ticker/date pairs in window."""
 
-    today = dt.date.today()
-    horizon = today + dt.timedelta(days=cfg.days_ahead)
+    start_date = cfg.scan_date
+    horizon = start_date + dt.timedelta(days=cfg.days_ahead)
     ingest = auto_ingest_earnings_calendar_db(
         cfg.tickers,
         db_path=cfg.db_path,
         limit=cfg.limit_per_ticker,
-        on_or_after=today,
+        on_or_after=start_date,
     )
     LOGGER.info(
         "calendar_ingest processed=%s created=%s updated=%s errors=%s",
@@ -250,14 +292,21 @@ def _fetch_upcoming_earnings_events(cfg: ScanConfig) -> list[dict[str, Any]]:
         LOGGER.info("No events found in event_registry after ingestion")
         return []
 
-    frame = registry[
-        (registry["event_family"].astype(str).str.lower() == "earnings")
-        & (registry["event_status"].astype(str).str.lower() == "scheduled")
-        & (registry["event_date"] >= today)
-        & (registry["event_date"] <= horizon)
-    ].copy()
+    base_mask = (registry["event_family"].astype(str).str.lower() == "earnings") & (
+        registry["event_status"].astype(str).str.lower() == "scheduled"
+    )
+    if cfg.mode == "pre-market":
+        window_mask = registry["event_date"] == start_date
+    else:
+        window_mask = (registry["event_date"] >= start_date) & (
+            registry["event_date"] <= horizon
+        )
+    frame = registry[base_mask & window_mask].copy()
     if frame.empty:
-        LOGGER.info("No names found for window %s to %s", today, horizon)
+        if cfg.mode == "pre-market":
+            LOGGER.info("No names found for exact scan date %s", start_date)
+        else:
+            LOGGER.info("No names found for window %s to %s", start_date, horizon)
         return []
 
     frame = frame.sort_values(["event_date", "underlying_symbol"])
@@ -286,9 +335,7 @@ def _run_playbook_scan_rows(
         ticker = str(event["ticker"])
         event_date = event["event_date"]
         output_path = cfg.output_dir / f"{ticker.lower()}_daily_scan_temp.html"
-        summary_path = (
-            cfg.output_dir / f"{ticker.lower()}_analysis_summary.json"
-        )
+        summary_path = cfg.output_dir / f"{ticker.lower()}_analysis_summary.json"
         if summary_path.exists():
             summary_path.unlink()
 
@@ -435,11 +482,21 @@ def _error_row(ticker: str, reason: str) -> PlaybookScanRow:
 def _safe_save_report(
     result: PlaybookScanResult,
     output_dir: Path,
+    mode: str,
+    scan_date: dt.date,
 ) -> Path | None:
     """Save report and swallow IO failures per task failure-mode policy."""
 
     try:
-        path = save_playbook_scan_report(result, output_dir=output_dir)
+        if mode == "pre-market":
+            output_dir.mkdir(parents=True, exist_ok=True)
+            today = scan_date.isoformat()
+            filename = f"{today}_pre_market_scan.html"
+            path = output_dir / filename
+            html_content = render_playbook_scan_html(result, today)
+            path.write_text(html_content, encoding="utf-8")
+        else:
+            path = save_playbook_scan_report(result, output_dir=output_dir)
     except OSError as exc:
         LOGGER.error("Report write failed: %s", exc)
         return None
@@ -447,19 +504,25 @@ def _safe_save_report(
     return path
 
 
-def _format_telegram_alert(row: PlaybookScanRow, scan_date: dt.date) -> str:
+def _format_telegram_alert(
+    row: PlaybookScanRow,
+    scan_date: dt.date,
+    mode: str = "full-window",
+) -> str:
     """Build per-ticker actionable Telegram alert message."""
 
-    edge_ratio = (
-        row.edge_ratio_detail.get("ratio") if row.edge_ratio_detail else None
-    )
-    edge_ratio_text = (
-        f"{float(edge_ratio):.2f}x" if edge_ratio is not None else "N/A"
-    )
+    edge_ratio = row.edge_ratio_detail.get("ratio") if row.edge_ratio_detail else None
+    edge_ratio_text = f"{float(edge_ratio):.2f}x" if edge_ratio is not None else "N/A"
     vol_label = row.vol_regime
-    edge_label = (
-        row.edge_ratio_detail.get("label") if row.edge_ratio_detail else "N/A"
-    )
+    edge_label = row.edge_ratio_detail.get("label") if row.edge_ratio_detail else "N/A"
+
+    if mode == "pre-market":
+        return (
+            "[PRE-MARKET EARNINGS SCAN] "
+            f"{row.ticker}: TYPE {row.type_} | "
+            f"IV Regime: {vol_label} | "
+            f"Edge Ratio: {edge_label} ({edge_ratio_text})"
+        )
 
     lines = [
         f"[EARNINGS SCAN] {scan_date.isoformat()}",
@@ -478,15 +541,21 @@ def _summary_message(
     filtered: int,
     actionable: int,
     report_path: Path | None,
+    mode: str = "full-window",
 ) -> str:
     """Build daily scan completion summary message."""
 
     report_label = (
         str(report_path) if report_path is not None else "(report unavailable)"
     )
+    title = (
+        "[PRE-MARKET EARNINGS SCAN COMPLETE]"
+        if mode == "pre-market"
+        else "[EARNINGS SCAN COMPLETE]"
+    )
     return "\n".join(
         [
-            f"[EARNINGS SCAN COMPLETE] {scan_date.isoformat()}",
+            f"{title} {scan_date.isoformat()}",
             (
                 f"Universe: {universe} names | Filtered: {filtered} "
                 f"| Actionable: {actionable} non-TYPE-5"
@@ -496,12 +565,21 @@ def _summary_message(
     )
 
 
-def _notify(message: str, *, dry_run: bool) -> None:
+def _notify(
+    message: str,
+    *,
+    dry_run: bool,
+    mode: str = "full-window",
+) -> None:
     """Send Telegram notification or fallback to console/log output."""
 
     if dry_run:
         print(message)
         LOGGER.info("DRY RUN ALERT:\n%s", message)
+        return
+
+    if mode == "pre-market":
+        _notify_via_telegram_send(message)
         return
 
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -515,6 +593,30 @@ def _notify(message: str, *, dry_run: bool) -> None:
         _send_telegram_message(token, chat_id, message)
     except Exception as exc:  # pragma: no cover - defensive
         LOGGER.error("Telegram unavailable; logging alert instead: %s", exc)
+        LOGGER.info("ALERT (fallback):\n%s", message)
+
+
+def _notify_via_telegram_send(message: str) -> None:
+    """Send message through telegram-send CLI with graceful fallback."""
+
+    binary = shutil.which("telegram-send")
+    if binary is None:
+        LOGGER.warning("telegram-send not found; logging alert instead")
+        LOGGER.info("ALERT (fallback):\n%s", message)
+        return
+
+    result = subprocess.run(
+        [binary, message],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        LOGGER.warning(
+            "telegram-send failed (rc=%s): %s",
+            result.returncode,
+            (result.stderr or "").strip() or "no stderr",
+        )
         LOGGER.info("ALERT (fallback):\n%s", message)
 
 
@@ -569,6 +671,27 @@ def _append_run_log(summary: dict[str, Any]) -> None:
     line = json.dumps(summary, sort_keys=True)
     with LOG_PATH.open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
+
+
+def _resolve_output_dir(output_dir: str | None, mode: str) -> Path:
+    """Resolve report output directory by mode and optional override."""
+
+    if output_dir:
+        return Path(output_dir)
+    if mode == "pre-market":
+        return Path("reports/pre-market")
+    return Path("reports/daily")
+
+
+def _resolve_scan_date(value: str | None) -> dt.date:
+    """Resolve scan date from CLI value or default to today."""
+
+    if not value:
+        return dt.date.today()
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("--date must be YYYY-MM-DD") from exc
 
 
 def main() -> None:

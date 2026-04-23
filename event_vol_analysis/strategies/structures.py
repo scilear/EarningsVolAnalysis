@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -67,6 +68,9 @@ class Strategy:
     max_gain: float = field(default=0.0, compare=False)
     capital_required: float = field(default=0.0, compare=False)
     capital_efficiency: float = field(default=0.0, compare=False)
+    requires_naked_short_approval: bool = field(default=False, compare=False)
+    requires_existing_long: bool = field(default=False, compare=False)
+    notes: str | None = field(default=None, compare=False)
 
     def is_defined_risk(self) -> bool:
         """Return True if this is a defined risk strategy."""
@@ -272,3 +276,204 @@ def _nearest_strike(
         raise ValueError(f"No strikes available for option_type={option_type}")
     chain["dist"] = (chain["strike"] - target).abs()
     return float(chain.sort_values("dist").iloc[0]["strike"])
+
+
+def _snap_to_strike(target: float, strike_step: float = 1.0) -> float:
+    """Round a theoretical strike to a tradable strike grid."""
+    if strike_step <= 0:
+        raise ValueError("strike_step must be positive")
+    return round(target / strike_step) * strike_step
+
+
+def make_long_put(
+    expiry: dt.date | pd.Timestamp,
+    strike: float,
+) -> Strategy:
+    """Create a long put structure."""
+    return Strategy(
+        name="long_put",
+        legs=(OptionLeg("put", float(strike), 1, "buy", pd.Timestamp(expiry)),),
+    )
+
+
+def make_long_call(
+    expiry: dt.date | pd.Timestamp,
+    strike: float,
+) -> Strategy:
+    """Create a long call structure."""
+    return Strategy(
+        name="long_call",
+        legs=(OptionLeg("call", float(strike), 1, "buy", pd.Timestamp(expiry)),),
+    )
+
+
+def make_put_spread(
+    expiry: dt.date | pd.Timestamp,
+    long_strike: float,
+    short_strike: float,
+) -> Strategy:
+    """Create a debit put spread."""
+    return Strategy(
+        name="put_spread",
+        legs=(
+            OptionLeg("put", float(long_strike), 1, "buy", pd.Timestamp(expiry)),
+            OptionLeg("put", float(short_strike), 1, "sell", pd.Timestamp(expiry)),
+        ),
+    )
+
+
+def make_call_spread(
+    expiry: dt.date | pd.Timestamp,
+    long_strike: float,
+    short_strike: float,
+) -> Strategy:
+    """Create a debit call spread."""
+    return Strategy(
+        name="call_spread",
+        legs=(
+            OptionLeg("call", float(long_strike), 1, "buy", pd.Timestamp(expiry)),
+            OptionLeg("call", float(short_strike), 1, "sell", pd.Timestamp(expiry)),
+        ),
+    )
+
+
+def make_long_straddle(
+    expiry: dt.date | pd.Timestamp,
+    strike: float,
+) -> Strategy:
+    """Create a long straddle."""
+    expiry_ts = pd.Timestamp(expiry)
+    strike_val = float(strike)
+    return Strategy(
+        name="long_straddle",
+        legs=(
+            OptionLeg("call", strike_val, 1, "buy", expiry_ts),
+            OptionLeg("put", strike_val, 1, "buy", expiry_ts),
+        ),
+    )
+
+
+def make_long_strangle(
+    expiry: dt.date | pd.Timestamp,
+    call_strike: float,
+    put_strike: float,
+) -> Strategy:
+    """Create a long strangle."""
+    expiry_ts = pd.Timestamp(expiry)
+    return Strategy(
+        name="long_strangle",
+        legs=(
+            OptionLeg("call", float(call_strike), 1, "buy", expiry_ts),
+            OptionLeg("put", float(put_strike), 1, "buy", expiry_ts),
+        ),
+    )
+
+
+def make_short_straddle(
+    expiry: dt.date | pd.Timestamp,
+    strike: float,
+) -> Strategy:
+    """Create a short straddle (charter-blocked unless approved)."""
+    expiry_ts = pd.Timestamp(expiry)
+    strike_val = float(strike)
+    return Strategy(
+        name="short_straddle",
+        legs=(
+            OptionLeg("call", strike_val, 1, "sell", expiry_ts),
+            OptionLeg("put", strike_val, 1, "sell", expiry_ts),
+        ),
+        requires_naked_short_approval=True,
+    )
+
+
+def make_short_strangle(
+    expiry: dt.date | pd.Timestamp,
+    call_strike: float,
+    put_strike: float,
+) -> Strategy:
+    """Create a short strangle (charter-blocked unless approved)."""
+    expiry_ts = pd.Timestamp(expiry)
+    return Strategy(
+        name="short_strangle",
+        legs=(
+            OptionLeg("call", float(call_strike), 1, "sell", expiry_ts),
+            OptionLeg("put", float(put_strike), 1, "sell", expiry_ts),
+        ),
+        requires_naked_short_approval=True,
+    )
+
+
+def make_covered_call(
+    expiry: dt.date | pd.Timestamp,
+    call_strike: float,
+) -> Strategy:
+    """Create a covered-call placeholder requiring existing long stock."""
+    expiry_ts = pd.Timestamp(expiry)
+    return Strategy(
+        name="covered_call",
+        legs=(OptionLeg("call", float(call_strike), 1, "sell", expiry_ts),),
+        requires_existing_long=True,
+    )
+
+
+def make_diagonal_put_backspread(
+    short_expiry: dt.date | pd.Timestamp,
+    long_expiry: dt.date | pd.Timestamp,
+    short_strike: float,
+    long_strike: float,
+    ratio: int = 2,
+) -> Strategy:
+    """Create a short-near/long-far diagonal put 1x2 backspread."""
+    if ratio < 1:
+        raise ValueError("ratio must be >= 1")
+    return Strategy(
+        name="diagonal_put_backspread",
+        legs=(
+            OptionLeg(
+                "put",
+                float(short_strike),
+                1,
+                "sell",
+                pd.Timestamp(short_expiry),
+            ),
+            OptionLeg(
+                "put",
+                float(long_strike),
+                int(ratio),
+                "buy",
+                pd.Timestamp(long_expiry),
+            ),
+        ),
+        notes=(
+            "Conditional loss zone between short and long strikes around near "
+            "expiry if short leg is assigned."
+        ),
+    )
+
+
+def make_risk_reversal(
+    expiry: dt.date | pd.Timestamp,
+    put_strike: float,
+    call_strike: float,
+    direction: str = "bullish",
+) -> Strategy:
+    """Create a risk-reversal structure."""
+    normalized_direction = direction.strip().lower()
+    expiry_ts = pd.Timestamp(expiry)
+    if normalized_direction == "bullish":
+        legs = (
+            OptionLeg("put", float(put_strike), 1, "sell", expiry_ts),
+            OptionLeg("call", float(call_strike), 1, "buy", expiry_ts),
+        )
+    elif normalized_direction == "bearish":
+        legs = (
+            OptionLeg("call", float(call_strike), 1, "sell", expiry_ts),
+            OptionLeg("put", float(put_strike), 1, "buy", expiry_ts),
+        )
+    else:
+        raise ValueError("direction must be 'bullish' or 'bearish'")
+
+    return Strategy(
+        name=f"risk_reversal_{normalized_direction}",
+        legs=legs,
+    )

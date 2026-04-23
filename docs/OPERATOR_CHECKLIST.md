@@ -62,4 +62,21 @@ Reference commands:
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python scripts/regression_smoke_harness.py
 ```
 
+## Pre-Market Same-Day Scan (T043)
+
+Use when you want same-day earnings coverage before market open.
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --mode pre-market \
+  --date 2026-05-01
+```
+
+Wrapper script:
+
+```bash
+./scripts/run_pre_market_scan.sh
+```
+
 If smoke fails, stop roadmap changes and restore trust path first.

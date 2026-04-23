@@ -6,9 +6,13 @@ import datetime as dt
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
-from event_vol_analysis.reports.playbook_scan import PlaybookScanRow
+from event_vol_analysis.reports.playbook_scan import (
+    PlaybookScanResult,
+    PlaybookScanRow,
+)
 from event_vol_analysis.workflow import daily_scan
 
 
@@ -62,6 +66,32 @@ def test_telegram_alert_format_type4_includes_checklist_note() -> None:
     assert "[PHASE 2 CHECKLIST - see report]" in message
 
 
+def test_pre_market_alert_format_single_line() -> None:
+    row = _row("GLD", type_=2, edge_label="FAIR")
+
+    message = daily_scan._format_telegram_alert(
+        row,
+        dt.date(2026, 5, 1),
+        mode="pre-market",
+    )
+    assert message.startswith("[PRE-MARKET EARNINGS SCAN]")
+    assert "GLD: TYPE 2" in message
+    assert "IV Regime:" in message
+    assert "Edge Ratio:" in message
+
+
+def test_pre_market_summary_message_title() -> None:
+    message = daily_scan._summary_message(
+        dt.date(2026, 5, 1),
+        universe=5,
+        filtered=1,
+        actionable=2,
+        report_path=Path("reports/pre-market/2026-05-01_pre_market_scan.html"),
+        mode="pre-market",
+    )
+    assert "[PRE-MARKET EARNINGS SCAN COMPLETE]" in message
+
+
 def test_telegram_summary_message(tmp_path: Path) -> None:
     report = tmp_path / "daily" / "2026-05-01_playbook_scan.html"
     message = daily_scan._summary_message(
@@ -72,10 +102,7 @@ def test_telegram_summary_message(tmp_path: Path) -> None:
         report_path=report,
     )
     assert "[EARNINGS SCAN COMPLETE] 2026-05-01" in message
-    assert (
-        "Universe: 12 names | Filtered: 3 | Actionable: 4 non-TYPE-5"
-        in message
-    )
+    assert "Universe: 12 names | Filtered: 3 | Actionable: 4 non-TYPE-5" in message
     assert str(report) in message
 
 
@@ -108,7 +135,9 @@ def test_no_alerts_when_all_type5(
 
     sent: list[str] = []
     monkeypatch.setattr(
-        daily_scan, "_notify", lambda message, dry_run: sent.append(message)
+        daily_scan,
+        "_notify",
+        lambda message, dry_run, mode="full-window": sent.append(message),
     )
 
     rc = daily_scan.run(
@@ -132,9 +161,7 @@ def test_telegram_unavailable_falls_back_to_log(
     monkeypatch.setattr(
         daily_scan,
         "_send_telegram_message",
-        lambda token, chat_id, text: (
-            _ for _ in ()
-        ).throw(RuntimeError("down")),
+        lambda token, chat_id, text: (_ for _ in ()).throw(RuntimeError("down")),
     )
 
     infos: list[str] = []
@@ -168,6 +195,129 @@ def test_dry_run_suppresses_telegram(
 
     assert "dry-run-message" in out
     assert called["value"] is False
+
+
+def test_notify_pre_market_uses_telegram_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, object] = {"ran": False, "cmd": None}
+
+    monkeypatch.setattr(
+        daily_scan.shutil, "which", lambda name: "/usr/bin/telegram-send"
+    )
+
+    def _fake_run(command, check=False, capture_output=True, text=True):
+        called["ran"] = True
+        called["cmd"] = command
+
+        class _Result:
+            returncode = 0
+            stderr = ""
+
+        return _Result()
+
+    monkeypatch.setattr(daily_scan.subprocess, "run", _fake_run)
+    daily_scan._notify("hello", dry_run=False, mode="pre-market")
+    assert called["ran"] is True
+    assert called["cmd"] == ["/usr/bin/telegram-send", "hello"]
+
+
+def test_notify_pre_market_fallback_when_cli_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(daily_scan.shutil, "which", lambda name: None)
+    captured: list[str] = []
+    monkeypatch.setattr(
+        daily_scan.LOGGER,
+        "info",
+        lambda msg, *args: captured.append(msg % args if args else msg),
+    )
+    monkeypatch.setattr(daily_scan.LOGGER, "warning", lambda *args, **kwargs: None)
+
+    daily_scan._notify("fallback-msg", dry_run=False, mode="pre-market")
+    assert any("ALERT (fallback)" in line for line in captured)
+
+
+def test_resolve_output_dir_by_mode() -> None:
+    assert daily_scan._resolve_output_dir(None, "full-window") == Path("reports/daily")
+    assert daily_scan._resolve_output_dir(None, "pre-market") == Path(
+        "reports/pre-market"
+    )
+    assert daily_scan._resolve_output_dir("x/y", "pre-market") == Path("x/y")
+
+
+def test_resolve_scan_date_invalid() -> None:
+    with pytest.raises(ValueError):
+        daily_scan._resolve_scan_date("2026/05/01")
+
+
+def test_fetch_upcoming_events_pre_market_exact_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Store:
+        def get_event_registry(self):
+            return pd.DataFrame(
+                [
+                    {
+                        "event_family": "earnings",
+                        "event_status": "scheduled",
+                        "event_date": dt.date(2026, 5, 1),
+                        "underlying_symbol": "AAPL",
+                    },
+                    {
+                        "event_family": "earnings",
+                        "event_status": "scheduled",
+                        "event_date": dt.date(2026, 5, 2),
+                        "underlying_symbol": "MSFT",
+                    },
+                ]
+            )
+
+    monkeypatch.setattr(daily_scan, "create_store", lambda path: _Store())
+    monkeypatch.setattr(
+        daily_scan,
+        "auto_ingest_earnings_calendar_db",
+        lambda *args, **kwargs: {
+            "tickers_processed": 1,
+            "events_created": 0,
+            "events_updated": 0,
+            "fetch_errors": [],
+        },
+    )
+
+    cfg = daily_scan.ScanConfig(
+        tickers=["AAPL"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/pre-market"),
+        mode="pre-market",
+        scan_date=dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+    )
+    events = daily_scan._fetch_upcoming_earnings_events(cfg)
+    assert len(events) == 1
+    assert events[0]["ticker"] == "AAPL"
+
+
+def test_safe_save_report_pre_market_filename(
+    tmp_path: Path,
+) -> None:
+    result = PlaybookScanResult(
+        rows=[_row("NVDA", type_=1)],
+        filtered_out=[],
+        frequency_warning_fired=False,
+    )
+    result.compute_summary()
+
+    path = daily_scan._safe_save_report(
+        result,
+        output_dir=tmp_path / "reports" / "pre-market",
+        mode="pre-market",
+        scan_date=dt.date(2026, 5, 1),
+    )
+    assert path is not None
+    assert path.name == "2026-05-01_pre_market_scan.html"
 
 
 def test_log_entry_appended(
