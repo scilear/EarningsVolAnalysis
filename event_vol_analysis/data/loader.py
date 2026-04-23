@@ -71,6 +71,7 @@ def get_options_chain(
     use_cache: bool = False,
     refresh_cache: bool = False,
     cache_db_path: Path | None = DEFAULT_CACHE_DB_PATH,
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     """Fetch options chain for a given expiry and return combined frame."""
     cache_path = None
@@ -101,6 +102,11 @@ def get_options_chain(
             raise ValueError("Cached options chain missing expiry column.")
         _raise_if_market_closed(chain)
         return chain
+
+    if cache_only:
+        raise ValueError(
+            "No cached options chain available (cache-only mode, live fetch disabled)."
+        )
 
     yf_ticker = yf.Ticker(ticker)
     chain = yf_ticker.option_chain(expiry.strftime("%Y-%m-%d"))
@@ -403,6 +409,108 @@ def _raise_if_market_closed(chain: pd.DataFrame) -> None:
         raise ValueError(
             "Options bid/ask are all 0.00; market appears closed or data unavailable."
         )
+
+
+def load_cached_chain_at_date(
+    ticker: str,
+    expiry: dt.date,
+    db_path: Path | None,
+    as_of_date: dt.date,
+    min_quality: str = "valid",
+) -> pd.DataFrame | None:
+    """Load the most recent valid chain snapshot for a ticker/expiry as of a date.
+
+    Args:
+        ticker: Stock ticker symbol
+        expiry: Specific expiry to load
+        db_path: Path to options_intraday.db
+        as_of_date: Load snapshot captured on or before this date
+        min_quality: Minimum quality tag ('valid', 'partial', 'all')
+
+    Returns:
+        Chain DataFrame or None if no valid snapshot found
+    """
+    if db_path is None:
+        return None
+
+    path = Path(db_path)
+    if not path.exists():
+        return None
+
+    try:
+        from data.option_data_store import create_store
+
+        store = create_store(path)
+        snapshot = store.query_eod_snapshot(ticker.upper(), as_of_date, min_quality)
+        if snapshot is None:
+            return None
+
+        ts = snapshot.get("timestamp")
+        if ts is None:
+            return None
+
+        chain = store.query_chain(
+            ticker=ticker,
+            timestamp=ts,
+            expiry=expiry,
+            min_quality="valid",
+        )
+    except Exception as exc:  # pragma: no cover
+        LOGGER.warning(
+            "EOD cache lookup failed for %s %s (%s): %s",
+            ticker,
+            expiry,
+            path,
+            exc,
+        )
+        return None
+
+    if chain.empty:
+        return None
+
+    normalized = chain.rename(
+        columns={
+            "implied_volatility": "impliedVolatility",
+            "open_interest": "openInterest",
+        }
+    ).copy()
+
+    if "expiry" in normalized.columns:
+        normalized["expiry"] = pd.to_datetime(normalized["expiry"])
+
+    if "mid" not in normalized.columns:
+        normalized["mid"] = (normalized["bid"] + normalized["ask"]) / 2.0
+    if "spread" not in normalized.columns:
+        normalized["spread"] = (normalized["ask"] - normalized["bid"]).clip(lower=0.0)
+
+    required = {
+        "strike",
+        "bid",
+        "ask",
+        "impliedVolatility",
+        "openInterest",
+        "option_type",
+        "expiry",
+    }
+    missing = required.difference(normalized.columns)
+    if missing:
+        LOGGER.warning(
+            "EOD cache missing required columns for %s %s: %s",
+            ticker,
+            expiry,
+            sorted(missing),
+        )
+        return None
+
+    LOGGER.info(
+        "Loaded EOD cache: %s %s from %s (%d rows, quality=%s)",
+        ticker,
+        expiry,
+        ts,
+        len(normalized),
+        snapshot.get("quality_tag", "unknown"),
+    )
+    return normalized
 
 
 def _is_cache_data_valid(chain: pd.DataFrame) -> bool:

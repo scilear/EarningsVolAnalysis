@@ -421,6 +421,20 @@ def _batch_command_for_ticker(
         command.append("--use-cache")
     if args.refresh_cache:
         command.append("--refresh-cache")
+    if getattr(args, "cache_only", False):
+        command.append("--cache-only")
+    cache_spot = getattr(args, "cache_spot", None)
+    if cache_spot is not None:
+        command.extend(["--cache-spot", str(cache_spot)])
+    cache_front_expiry = getattr(args, "cache_front_expiry", None)
+    if cache_front_expiry:
+        command.extend(["--cache-front-expiry", str(cache_front_expiry)])
+    cache_back1_expiry = getattr(args, "cache_back1_expiry", None)
+    if cache_back1_expiry:
+        command.extend(["--cache-back1-expiry", str(cache_back1_expiry)])
+    cache_back2_expiry = getattr(args, "cache_back2_expiry", None)
+    if cache_back2_expiry:
+        command.extend(["--cache-back2-expiry", str(cache_back2_expiry)])
     if args.seed is not None:
         command.extend(["--seed", str(args.seed)])
     if move_model:
@@ -759,6 +773,35 @@ def main() -> None:
         help="Force refresh of cached option chains",
     )
     parser.add_argument(
+        "--cache-only",
+        action="store_true",
+        help="Fail if required cache data is missing; do not fetch live options.",
+    )
+    parser.add_argument(
+        "--cache-spot",
+        type=float,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cache-front-expiry",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cache-back1-expiry",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cache-back2-expiry",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -912,19 +955,49 @@ def main() -> None:
                 event_date,
             )
 
+        cache_only = bool(getattr(args, "cache_only", False))
+        cache_spot = getattr(args, "cache_spot", None)
+        cache_front_expiry_raw = getattr(args, "cache_front_expiry", None)
+        cache_back1_expiry_raw = getattr(args, "cache_back1_expiry", None)
+        cache_back2_expiry_raw = getattr(args, "cache_back2_expiry", None)
+        cache_front_expiry: dt.date | None = None
+        cache_back1_expiry: dt.date | None = None
+        cache_back2_expiry: dt.date | None = None
+        if cache_front_expiry_raw:
+            cache_front_expiry = dt.date.fromisoformat(str(cache_front_expiry_raw))
+        if cache_back1_expiry_raw:
+            cache_back1_expiry = dt.date.fromisoformat(str(cache_back1_expiry_raw))
+        if cache_back2_expiry_raw:
+            cache_back2_expiry = dt.date.fromisoformat(str(cache_back2_expiry_raw))
+
         try:
-            spot = get_spot_price(ticker)
+            if cache_spot is not None:
+                spot = float(cache_spot)
+            else:
+                spot = get_spot_price(ticker)
             div_yield = get_dividend_yield(ticker)
             LOGGER.info("Dividend yield for %s: %.4f", ticker, div_yield)
-            expiries = get_option_expiries(ticker)
-            post_event = get_expiries_after(expiries, event_date)
-            if len(post_event) < 2:
-                raise ValueError("Insufficient expiries after event date.")
+            if cache_front_expiry is not None:
+                front_expiry = cache_front_expiry
+                post_event = get_expiries_after([front_expiry], event_date)
+                if not post_event:
+                    raise ValueError("Cached front expiry is before event date.")
+                if cache_back1_expiry is not None:
+                    back1_expiry = cache_back1_expiry
+                else:
+                    back1_expiry = front_expiry
+                back2_expiry = cache_back2_expiry
+            else:
+                expiries = get_option_expiries(ticker)
+                post_event = get_expiries_after(expiries, event_date)
+                if len(post_event) < 2:
+                    raise ValueError("Insufficient expiries after event date.")
 
-            front_expiry = post_event[0]
+                front_expiry = post_event[0]
+                back1_expiry = post_event[1]
+                back2_expiry = post_event[2] if len(post_event) > 2 else None
+
             _validate_front_expiry(event_date, front_expiry)
-            back1_expiry = post_event[1]
-            back2_expiry = post_event[2] if len(post_event) > 2 else None
 
             cache_dir = Path(args.cache_dir)
 
@@ -933,8 +1006,9 @@ def main() -> None:
             raw_front = get_options_chain(
                 ticker,
                 front_expiry,
-                cache_dir=None,
-                use_cache=False,
+                cache_dir=cache_dir if args.use_cache else None,
+                use_cache=args.use_cache,
+                cache_only=cache_only,
             )
             cal = calibrate_ticker_params(ticker, raw_front, spot)
 
@@ -944,6 +1018,7 @@ def main() -> None:
                 cache_dir,
                 args.use_cache,
                 args.refresh_cache,
+                cache_only=cache_only,
                 ticker=ticker,
                 min_oi=cal["min_oi"],
                 max_spread_pct=cal["max_spread_pct"],
@@ -954,6 +1029,7 @@ def main() -> None:
                 cache_dir,
                 args.use_cache,
                 args.refresh_cache,
+                cache_only=cache_only,
                 ticker=ticker,
                 min_oi=cal["min_oi"],
                 max_spread_pct=cal["max_spread_pct"],
@@ -965,6 +1041,7 @@ def main() -> None:
                     cache_dir,
                     args.use_cache,
                     args.refresh_cache,
+                    cache_only=cache_only,
                     ticker=ticker,
                     min_oi=cal["min_oi"],
                     max_spread_pct=cal["max_spread_pct"],
@@ -1631,6 +1708,9 @@ def main() -> None:
             "top_structure": top.get("name"),
             "score": round(float(top.get("score", 0.0)), 4),
             "move_model": args.move_model,
+            "implied_move": snapshot.get("implied_move"),
+            "front_iv": snapshot.get("front_iv"),
+            "back_iv": snapshot.get("back_iv"),
             "blocking_warnings": blocking_warnings,
             # Full TYPE classification for playbook scan
             "vol_regime": {
@@ -1799,6 +1879,7 @@ def _load_filtered_chain(
     cache_dir: Path,
     use_cache: bool,
     refresh_cache: bool,
+    cache_only: bool = False,
     ticker: str | None = None,
     min_oi: int = config.MIN_OI,
     max_spread_pct: float = config.MAX_SPREAD_PCT,
@@ -1813,6 +1894,7 @@ def _load_filtered_chain(
         cache_dir=cache_dir,
         use_cache=use_cache,
         refresh_cache=refresh_cache,
+        cache_only=cache_only,
     )
     LOGGER.info("Options rows pre-filter for %s: %d", expiry, len(chain))
     chain = filter_by_moneyness(

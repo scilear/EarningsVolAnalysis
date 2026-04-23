@@ -26,6 +26,7 @@ from event_vol_analysis.data.loader import (
     get_option_expiries,
     get_options_chain,
     get_spot_price,
+    load_cached_chain_at_date,
 )
 from event_vol_analysis.reports.playbook_scan import (
     PlaybookScanResult,
@@ -40,6 +41,8 @@ from event_vol_analysis.reports.playbook_scan import (
 
 LOGGER = logging.getLogger(__name__)
 LOG_PATH = Path("logs/daily_scan.log")
+IMPLIED_MOVE_MATERIAL_SHIFT_PCT = 10.0
+IV_REGIME_MATERIAL_SHIFT_PCT = 15.0
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,9 @@ class ScanConfig:
     days_ahead: int
     limit_per_ticker: int
     dry_run: bool
+    use_cache: bool
+    refresh_cache: bool
+    validate_cache: bool
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -112,10 +118,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mode",
         default="full-window",
-        choices=["full-window", "pre-market"],
+        choices=[
+            "full-window",
+            "pre-market",
+            "eod-refresh",
+            "overnight",
+            "open-confirmation",
+        ],
         help=(
-            "Scan mode: full-window keeps T032 behavior (today to days-ahead), "
-            "pre-market scans one exact date."
+            "Scan mode: full-window (today to days-ahead), pre-market (exact date), "
+            "eod-refresh (capture EOD chains), overnight (analysis from cache), "
+            "open-confirmation (live vs cached comparison)."
         ),
     )
     parser.add_argument(
@@ -124,6 +137,29 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Scan date in YYYY-MM-DD. Defaults to today. In pre-market mode "
             "this date is matched exactly."
+        ),
+    )
+    parser.add_argument(
+        "--use-cache",
+        action="store_true",
+        help=(
+            "Use cached EOD data instead of fetching live. Required for overnight mode."
+        ),
+    )
+    parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help=(
+            "Force-refresh cached data with live fetch. "
+            "Used by open-confirmation to get current market snapshot."
+        ),
+    )
+    parser.add_argument(
+        "--validate-cache",
+        action="store_true",
+        help=(
+            "Validate cache coverage for universe and exit. "
+            "Shows which tickers have valid EOD snapshots for --date."
         ),
     )
     return parser
@@ -152,9 +188,31 @@ def run(argv: list[str] | None = None) -> int:
         days_ahead=args.days_ahead,
         limit_per_ticker=args.limit,
         dry_run=args.dry_run,
+        use_cache=args.use_cache,
+        refresh_cache=args.refresh_cache,
+        validate_cache=args.validate_cache,
     )
 
-    LOGGER.info("daily_scan start date=%s dry_run=%s", scan_date, cfg.dry_run)
+    LOGGER.info(
+        "daily_scan start date=%s mode=%s dry_run=%s use_cache=%s",
+        scan_date,
+        cfg.mode,
+        cfg.dry_run,
+        cfg.use_cache,
+    )
+
+    if cfg.validate_cache:
+        return _run_validate_cache(cfg)
+
+    if cfg.mode == "eod-refresh":
+        return _run_eod_refresh(cfg)
+
+    if cfg.mode == "overnight":
+        return _run_overnight_analysis(cfg)
+
+    if cfg.mode == "open-confirmation":
+        return _run_open_confirmation(cfg)
+
     summary: dict[str, Any] = {
         "scan_date": scan_date.isoformat(),
         "universe": 0,
@@ -234,6 +292,495 @@ def run(argv: list[str] | None = None) -> int:
     _notify(summary_message, dry_run=cfg.dry_run, mode=cfg.mode)
 
     _append_run_log(summary)
+    return 0
+
+
+def _run_validate_cache(cfg: ScanConfig) -> int:
+    """Check which tickers have valid EOD snapshots and print coverage summary."""
+    LOGGER.info("Validating cache for date=%s", cfg.scan_date)
+    store = create_store(cfg.db_path)
+    coverage = store.validate_cache_coverage(cfg.tickers, cfg.scan_date)
+    total = len(coverage)
+    covered = sum(1 for r in coverage if r["has_cache"])
+    print(f"\n=== Cache Validation: {cfg.scan_date} ===")
+    print(
+        f"Total tickers: {total} | Valid cache: {covered} | Missing: {total - covered}"
+    )
+    print(
+        f"{'Ticker':<8} {'Has Cache':<12} {'Quality':<10} {'Valid Records':<14} {'Snapshot Time'}"
+    )
+    print("-" * 65)
+    for r in coverage:
+        ts = r["snapshot_ts"].strftime("%Y-%m-%d %H:%M") if r["snapshot_ts"] else "N/A"
+        print(
+            f"{r['ticker']:<8} "
+            f"{'YES' if r['has_cache'] else 'NO':<12} "
+            f"{str(r['quality_tag'] or 'N/A'):<10} "
+            f"{r['records_valid']:<14} "
+            f"{ts}"
+        )
+    LOGGER.info("Cache validation complete: %d/%d with valid snapshots", covered, total)
+    return 0
+
+
+def _run_eod_refresh(cfg: ScanConfig) -> int:
+    """Fetch and cache EOD option chains for the full universe."""
+    import time
+
+    LOGGER.info("EOD refresh start date=%s", cfg.scan_date)
+    store = create_store(cfg.db_path)
+    results: list[dict[str, Any]] = []
+    capture_ts = dt.datetime.now(dt.timezone.utc)
+    capture_date = cfg.scan_date
+
+    for ticker in cfg.tickers:
+        LOGGER.info("EOD refresh: fetching %s", ticker)
+        try:
+            previous_snapshot = store.query_eod_snapshot(ticker.upper(), None, "all")
+            spot = get_spot_price(ticker)
+            expiries = get_option_expiries(ticker)
+            if not expiries:
+                LOGGER.warning("No expiries for %s at EOD refresh", ticker)
+                quality = "stale"
+                store.store_eod_snapshot(
+                    ticker=ticker,
+                    timestamp=capture_ts,
+                    quality_tag=quality,
+                    records_total=0,
+                    records_valid=0,
+                    records_invalid=0,
+                    expiry_set=[],
+                    spot_price=spot,
+                )
+                results.append(_eod_result(ticker, quality, 0, 0, 0, spot))
+                continue
+
+            records_total = 0
+            records_valid = 0
+            records_invalid = 0
+            market_closed_detected = False
+
+            for expiry in expiries[:3]:
+                try:
+                    chain = get_options_chain(
+                        ticker,
+                        expiry,
+                        cache_dir=None,
+                        use_cache=False,
+                        refresh_cache=True,
+                    )
+                    stats = store.store_chain(
+                        ticker=ticker,
+                        timestamp=capture_ts,
+                        chain_df=chain,
+                        underlying_price=spot,
+                    )
+                    records_total += int(stats.get("total", 0))
+                    records_valid += int(stats.get("valid", 0))
+                    records_invalid += int(stats.get("filtered", 0))
+                except ValueError as exc:
+                    if "market appears closed" in str(exc).lower():
+                        market_closed_detected = True
+                    LOGGER.warning(
+                        "Chain fetch failed for %s %s: %s", ticker, expiry, exc
+                    )
+                except Exception as exc:
+                    LOGGER.warning(
+                        "Chain fetch failed for %s %s: %s", ticker, expiry, exc
+                    )
+
+                time.sleep(0.3)
+
+            if records_total > 0:
+                quality = _derive_eod_quality_tag(records_total, records_valid)
+            elif market_closed_detected:
+                quality = "zero"
+            elif _is_snapshot_stale(previous_snapshot, capture_ts):
+                quality = "stale"
+            else:
+                quality = "stale"
+
+            expiry_strs = [e.strftime("%Y-%m-%d") for e in expiries[:3]]
+            store.store_eod_snapshot(
+                ticker=ticker,
+                timestamp=capture_ts,
+                quality_tag=quality,
+                records_total=records_total,
+                records_valid=records_valid,
+                records_invalid=records_invalid,
+                expiry_set=expiry_strs,
+                spot_price=spot,
+            )
+            results.append(
+                _eod_result(
+                    ticker, quality, records_total, records_valid, records_invalid, spot
+                )
+            )
+            LOGGER.info(
+                "EOD refresh %s: quality=%s valid=%d/%d",
+                ticker,
+                quality,
+                records_valid,
+                records_total,
+            )
+        except Exception as exc:
+            LOGGER.error("EOD refresh failed for %s: %s", ticker, exc)
+            results.append(_eod_result(ticker, "unknown", 0, 0, 0, None))
+
+    print(f"\n=== EOD Refresh: {capture_date} ===")
+    print(
+        f"{'Ticker':<8} {'Quality':<10} {'Total':<8} {'Valid':<8} {'Invalid':<8} {'Spot'}"
+    )
+    print("-" * 55)
+    for r in results:
+        spot_str = f"{r['spot']:.2f}" if r["spot"] else "N/A"
+        print(
+            f"{r['ticker']:<8} {r['quality_tag']:<10} "
+            f"{r['records_total']:<8} {r['records_valid']:<8} "
+            f"{r['records_invalid']:<8} {spot_str}"
+        )
+
+    valid_count = sum(1 for r in results if r["quality_tag"] in ("valid", "partial"))
+    LOGGER.info(
+        "EOD refresh complete: %d/%d tickers captured", valid_count, len(results)
+    )
+    return 0
+
+
+def _eod_result(
+    ticker: str,
+    quality_tag: str,
+    records_total: int,
+    records_valid: int,
+    records_invalid: int,
+    spot: float | None,
+) -> dict[str, Any]:
+    return {
+        "ticker": ticker,
+        "quality_tag": quality_tag,
+        "records_total": records_total,
+        "records_valid": records_valid,
+        "records_invalid": records_invalid,
+        "spot": spot,
+    }
+
+
+def _derive_eod_quality_tag(records_total: int, records_valid: int) -> str:
+    """Classify EOD capture quality from valid/total counts."""
+    if records_total <= 0:
+        return "stale"
+    if records_valid <= 0:
+        return "zero"
+    valid_pct = records_valid / records_total
+    if valid_pct >= 0.95:
+        return "valid"
+    if valid_pct >= 0.50:
+        return "partial"
+    return "partial"
+
+
+def _is_snapshot_stale(
+    snapshot: dict[str, Any] | None,
+    as_of: dt.datetime,
+    *,
+    max_age_hours: int = 24,
+) -> bool:
+    """Return True when latest snapshot is older than max_age_hours."""
+    if snapshot is None:
+        return True
+    ts = snapshot.get("timestamp")
+    if ts is None:
+        return True
+    if isinstance(ts, str):
+        try:
+            ts = dt.datetime.fromisoformat(ts)
+        except ValueError:
+            return True
+    if not isinstance(ts, dt.datetime):
+        return True
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=dt.timezone.utc)
+    as_of_utc = (
+        as_of if as_of.tzinfo is not None else as_of.replace(tzinfo=dt.timezone.utc)
+    )
+    return (as_of_utc - ts) > dt.timedelta(hours=max_age_hours)
+
+
+def _extract_snapshot_expiries(snapshot: dict[str, Any]) -> list[str]:
+    """Parse expiry_set payload from option_snapshots row."""
+    expiry_strs_raw = snapshot.get("expiry_set")
+    if not expiry_strs_raw:
+        return []
+    if isinstance(expiry_strs_raw, str):
+        try:
+            parsed = json.loads(expiry_strs_raw)
+        except Exception:
+            return []
+    else:
+        parsed = expiry_strs_raw
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if isinstance(item, str)]
+
+
+def _resolve_snapshot_expiry_tuple(
+    snapshot: dict[str, Any],
+) -> tuple[dt.date | None, dt.date | None, dt.date | None]:
+    """Resolve up to front/back1/back2 expiries from snapshot metadata."""
+    expiry_strs = _extract_snapshot_expiries(snapshot)
+    dates: list[dt.date] = []
+    for item in expiry_strs:
+        try:
+            parsed = dt.date.fromisoformat(item)
+        except ValueError:
+            continue
+        dates.append(parsed)
+    if not dates:
+        return None, None, None
+    front = dates[0]
+    back1 = dates[1] if len(dates) > 1 else front
+    back2 = dates[2] if len(dates) > 2 else None
+    return front, back1, back2
+
+
+def _run_overnight_analysis(cfg: ScanConfig) -> int:
+    """Run 4-layer analysis using cached EOD data (no live fetch)."""
+    if not cfg.use_cache:
+        print(
+            "ERROR: overnight mode requires --use-cache flag. "
+            "Run: daily_scan --mode overnight --use-cache --date YYYY-MM-DD",
+            file=sys.stderr,
+        )
+        LOGGER.error("overnight mode called without --use-cache")
+        return 2
+
+    LOGGER.info("overnight analysis start date=%s", cfg.scan_date)
+    store = create_store(cfg.db_path)
+
+    rows: list[PlaybookScanRow] = []
+    skipped: list[PlaybookScanRow] = []
+
+    for ticker in cfg.tickers:
+        snapshot = store.query_eod_snapshot(ticker.upper(), cfg.scan_date, "valid")
+        if snapshot is None:
+            LOGGER.warning(
+                "overnight: no valid EOD cache for %s on %s", ticker, cfg.scan_date
+            )
+            skipped.append(
+                _error_row(ticker, f"no valid EOD cache for {cfg.scan_date}")
+            )
+            continue
+
+        ts = snapshot.get("timestamp")
+        LOGGER.info("overnight: using cache for %s from %s", ticker, ts)
+
+        expiry_strs = _extract_snapshot_expiries(snapshot)
+
+        if not expiry_strs:
+            LOGGER.warning("overnight: no expiry data for %s in snapshot", ticker)
+            skipped.append(_error_row(ticker, "no expiry data in snapshot"))
+            continue
+
+        front_expiry, back1_expiry, back2_expiry = _resolve_snapshot_expiry_tuple(
+            snapshot
+        )
+        if front_expiry is None or back1_expiry is None:
+            LOGGER.warning("overnight: could not parse expiries for %s", ticker)
+            skipped.append(_error_row(ticker, "invalid cached expiry set"))
+            continue
+
+        spot = snapshot.get("spot_price")
+        if spot is None or float(spot) <= 0:
+            LOGGER.warning("overnight: no valid spot in snapshot for %s", ticker)
+            skipped.append(_error_row(ticker, "no valid spot price in snapshot"))
+            continue
+
+        chain = load_cached_chain_at_date(
+            ticker.upper(),
+            front_expiry,
+            Path(cfg.db_path),
+            cfg.scan_date,
+            min_quality="valid",
+        )
+        if chain is None or chain.empty:
+            LOGGER.warning("overnight: no valid chain for %s %s", ticker, front_expiry)
+            skipped.append(
+                _error_row(ticker, f"no valid chain for expiry {front_expiry}")
+            )
+            continue
+
+        passes, reason = check_playbook_liquidity(chain, spot)
+        if not passes:
+            skipped.append(_error_row(ticker, f"liquidity filter: {reason}"))
+            continue
+
+        output_dir = cfg.output_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{ticker.lower()}_overnight_temp.html"
+        summary_path = output_dir / f"{ticker.lower()}_overnight_analysis_summary.json"
+
+        if summary_path.exists():
+            summary_path.unlink()
+
+        event_date = cfg.scan_date
+        args_ns = argparse.Namespace(
+            cache_dir="data/cache",
+            event_date=event_date.isoformat(),
+            use_cache=True,
+            refresh_cache=False,
+            cache_only=True,
+            cache_spot=float(spot),
+            cache_front_expiry=front_expiry.isoformat(),
+            cache_back1_expiry=back1_expiry.isoformat(),
+            cache_back2_expiry=(back2_expiry.isoformat() if back2_expiry else None),
+            seed=None,
+            move_model=config.MOVE_MODEL_DEFAULT,
+            test_data=False,
+            test_scenario="baseline",
+            test_data_dir=None,
+            save_test_data=None,
+        )
+        cmd = _batch_command_for_ticker(
+            args_ns,
+            ticker,
+            output_path,
+            analysis_summary_path=summary_path,
+        )
+
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not summary_path.exists():
+            skipped.append(_error_row(ticker, "analysis pipeline failed"))
+            continue
+
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            skipped.append(_error_row(ticker, "failed to parse analysis_summary.json"))
+            continue
+
+        row = create_scan_row_from_snapshot(ticker, payload)
+        rows.append(row)
+
+    rows = sort_playbook_rows(rows)
+    result_obj = PlaybookScanResult(
+        rows=rows,
+        filtered_out=skipped,
+        frequency_warning_fired=False,
+    )
+    result_obj.compute_summary()
+
+    report_path = _safe_save_report(result_obj, cfg.output_dir, cfg.mode, cfg.scan_date)
+
+    actionable = [row for row in rows if row.type_ != 5]
+    for row in actionable:
+        alert = _format_telegram_alert(row, cfg.scan_date, cfg.mode)
+        _notify(alert, dry_run=cfg.dry_run, mode=cfg.mode)
+
+    summary_message = _summary_message(
+        cfg.scan_date,
+        universe=len(cfg.tickers),
+        filtered=len(skipped),
+        actionable=len(actionable),
+        report_path=report_path,
+        mode=cfg.mode,
+    )
+    _notify(summary_message, dry_run=cfg.dry_run, mode=cfg.mode)
+
+    LOGGER.info("overnight analysis complete: %d actionable", len(actionable))
+    return 0
+
+
+def _run_open_confirmation(cfg: ScanConfig) -> int:
+    """Compare live vol surface to overnight snapshot and report material changes."""
+    LOGGER.info("open confirmation start date=%s", cfg.scan_date)
+
+    print(f"\n=== Open Confirmation: {cfg.scan_date} ===")
+    print("(Diff vs overnight snapshot — operator reviews)")
+    print()
+    print(
+        f"{'Ticker':<8} {'O/N IM%':<10} {'Live IM%':<10} {'IM Shift%':<10} {'IV Shift%':<10} {'Status':<22}"
+    )
+    print("-" * 86)
+
+    total = 0
+    material_changes = 0
+    for ticker in cfg.tickers:
+        overnight_summary = _load_overnight_analysis_summary(cfg.scan_date, ticker)
+        if overnight_summary is None:
+            LOGGER.warning("open-confirmation: no overnight summary for %s", ticker)
+            print(
+                f"{ticker:<8} {'N/A':<10} {'N/A':<10} {'N/A':<10} {'N/A':<10} {'NO OVERNIGHT DATA':<22}"
+            )
+            continue
+
+        live_summary = _run_live_confirmation_summary(cfg, ticker)
+        if live_summary is None:
+            LOGGER.warning("open-confirmation: live analysis failed for %s", ticker)
+            print(
+                f"{ticker:<8} {'N/A':<10} {'N/A':<10} {'N/A':<10} {'N/A':<10} {'LIVE ANALYSIS FAILED':<22}"
+            )
+            continue
+
+        overnight_implied, overnight_front_iv = _extract_confirmation_metrics(
+            overnight_summary
+        )
+        live_implied, live_front_iv = _extract_confirmation_metrics(live_summary)
+
+        implied_shift_pct = _pct_shift(live_implied, overnight_implied)
+        iv_shift_pct = _pct_shift(live_front_iv, overnight_front_iv)
+
+        status = "OK"
+        implied_material = (
+            implied_shift_pct is not None
+            and implied_shift_pct > IMPLIED_MOVE_MATERIAL_SHIFT_PCT
+        )
+        iv_material = (
+            iv_shift_pct is not None and iv_shift_pct > IV_REGIME_MATERIAL_SHIFT_PCT
+        )
+        if implied_material or iv_material:
+            status = "MATERIAL SHIFT"
+            material_changes += 1
+        elif implied_shift_pct is None or iv_shift_pct is None:
+            status = "INSUFFICIENT DATA"
+
+        overnight_implied_text = (
+            f"{overnight_implied * 100:.2f}" if overnight_implied is not None else "N/A"
+        )
+        live_implied_text = (
+            f"{live_implied * 100:.2f}" if live_implied is not None else "N/A"
+        )
+        implied_shift_text = (
+            f"{implied_shift_pct:.2f}" if implied_shift_pct is not None else "N/A"
+        )
+        iv_shift_text = f"{iv_shift_pct:.2f}" if iv_shift_pct is not None else "N/A"
+
+        total += 1
+        print(
+            f"{ticker:<8} "
+            f"{overnight_implied_text:<10} "
+            f"{live_implied_text:<10} "
+            f"{implied_shift_text:<10} "
+            f"{iv_shift_text:<10} "
+            f"{status:<22}"
+        )
+
+    print()
+    if material_changes > 0:
+        print(
+            f"WARNING: {material_changes}/{total} names have material shifts "
+            f"(implied move >{IMPLIED_MOVE_MATERIAL_SHIFT_PCT:.0f}% or "
+            f"front IV >{IV_REGIME_MATERIAL_SHIFT_PCT:.0f}%)."
+        )
+        print("Review overnight TYPE classifications before entry.")
+    else:
+        print(f"No material changes detected across {total} names.")
+
+    LOGGER.info("open confirmation complete: %d material changes", material_changes)
     return 0
 
 
@@ -330,6 +877,7 @@ def _run_playbook_scan_rows(
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
     rows: list[PlaybookScanRow] = []
     filtered_rows: list[PlaybookScanRow] = []
+    cache_store = create_store(cfg.db_path) if cfg.mode == "pre-market" else None
 
     for event in events:
         ticker = str(event["ticker"])
@@ -339,11 +887,51 @@ def _run_playbook_scan_rows(
         if summary_path.exists():
             summary_path.unlink()
 
+        cache_only = False
+        cache_spot: float | None = None
+        cache_front_expiry: str | None = None
+        cache_back1_expiry: str | None = None
+        cache_back2_expiry: str | None = None
+        if cfg.mode == "pre-market" and cache_store is not None:
+            snapshot = cache_store.query_eod_snapshot(
+                ticker.upper(), cfg.scan_date, "valid"
+            )
+            if snapshot is None:
+                filtered_rows.append(
+                    _error_row(ticker, "no valid EOD cache for pre-market")
+                )
+                continue
+
+            front_expiry, back1_expiry, back2_expiry = _resolve_snapshot_expiry_tuple(
+                snapshot
+            )
+            if front_expiry is None or back1_expiry is None:
+                filtered_rows.append(_error_row(ticker, "no valid expiry in EOD cache"))
+                continue
+
+            spot_value = _safe_float(snapshot.get("spot_price"))
+            if spot_value is None or spot_value <= 0:
+                filtered_rows.append(
+                    _error_row(ticker, "no valid spot price in EOD cache")
+                )
+                continue
+
+            cache_only = True
+            cache_spot = float(spot_value)
+            cache_front_expiry = front_expiry.isoformat()
+            cache_back1_expiry = back1_expiry.isoformat()
+            cache_back2_expiry = back2_expiry.isoformat() if back2_expiry else None
+
         args_ns = argparse.Namespace(
             cache_dir="data/cache",
             event_date=event_date.isoformat(),
             use_cache=True,
             refresh_cache=False,
+            cache_only=cache_only,
+            cache_spot=cache_spot,
+            cache_front_expiry=cache_front_expiry,
+            cache_back1_expiry=cache_back1_expiry,
+            cache_back2_expiry=cache_back2_expiry,
             seed=None,
             move_model=config.MOVE_MODEL_DEFAULT,
             test_data=False,
@@ -414,31 +1002,66 @@ def _apply_hard_filters(
 
     passed: list[dict[str, Any]] = []
     filtered: list[PlaybookScanRow] = []
+    store = create_store(cfg.db_path) if cfg.mode == "pre-market" else None
 
     for event in events:
         ticker = str(event["ticker"])
         event_date = event["event_date"]
         try:
-            spot = get_spot_price(ticker)
-            expiries = get_option_expiries(ticker)
-            valid_expiries = get_expiries_after(expiries, event_date)
-            if not valid_expiries:
-                filtered.append(
-                    _error_row(
-                        ticker=ticker,
-                        reason="no valid expiry on/after event date",
-                    )
+            if cfg.mode == "pre-market" and store is not None:
+                snapshot = store.query_eod_snapshot(
+                    ticker.upper(), cfg.scan_date, "valid"
                 )
-                continue
+                if snapshot is None:
+                    filtered.append(
+                        _error_row(ticker, "no valid EOD cache for pre-market")
+                    )
+                    continue
 
-            expiry = valid_expiries[0]
-            chain = get_options_chain(
-                ticker,
-                expiry,
-                cache_dir=Path("data/cache"),
-                use_cache=True,
-                refresh_cache=False,
-            )
+                spot = snapshot.get("spot_price")
+                if spot is None or float(spot) <= 0:
+                    filtered.append(
+                        _error_row(ticker, "no valid spot price in EOD cache")
+                    )
+                    continue
+
+                front_expiry, _, _ = _resolve_snapshot_expiry_tuple(snapshot)
+                if front_expiry is None:
+                    filtered.append(_error_row(ticker, "no valid expiry in EOD cache"))
+                    continue
+
+                chain = load_cached_chain_at_date(
+                    ticker.upper(),
+                    front_expiry,
+                    Path(cfg.db_path),
+                    cfg.scan_date,
+                    min_quality="valid",
+                )
+                if chain is None or chain.empty:
+                    filtered.append(_error_row(ticker, "no valid chain in EOD cache"))
+                    continue
+            else:
+                spot = get_spot_price(ticker)
+                expiries = get_option_expiries(ticker)
+                valid_expiries = get_expiries_after(expiries, event_date)
+                if not valid_expiries:
+                    filtered.append(
+                        _error_row(
+                            ticker=ticker,
+                            reason="no valid expiry on/after event date",
+                        )
+                    )
+                    continue
+
+                expiry = valid_expiries[0]
+                chain = get_options_chain(
+                    ticker,
+                    expiry,
+                    cache_dir=Path("data/cache"),
+                    use_cache=True,
+                    refresh_cache=False,
+                )
+
             passes, reason = check_playbook_liquidity(chain, spot)
             if not passes:
                 filtered.append(
@@ -460,6 +1083,98 @@ def _apply_hard_filters(
         passed.append(event)
 
     return passed, filtered
+
+
+def _load_overnight_analysis_summary(
+    scan_date: dt.date,
+    ticker: str,
+    overnight_dir: Path | None = None,
+) -> dict[str, Any] | None:
+    """Load prior overnight summary payload for one ticker/date."""
+    base_dir = overnight_dir or Path("reports/overnight")
+    path = base_dir / f"{ticker.lower()}_overnight_analysis_summary.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if str(payload.get("event_date")) != scan_date.isoformat():
+        return None
+    return payload
+
+
+def _run_live_confirmation_summary(
+    cfg: ScanConfig,
+    ticker: str,
+) -> dict[str, Any] | None:
+    """Run one live analysis summary for open-confirmation diffing."""
+    output_dir = cfg.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{ticker.lower()}_open_confirmation_temp.html"
+    summary_path = output_dir / f"{ticker.lower()}_open_confirmation_summary.json"
+    if summary_path.exists():
+        summary_path.unlink()
+
+    args_ns = argparse.Namespace(
+        cache_dir="data/cache",
+        event_date=cfg.scan_date.isoformat(),
+        use_cache=False,
+        refresh_cache=cfg.refresh_cache,
+        seed=None,
+        move_model=config.MOVE_MODEL_DEFAULT,
+        test_data=False,
+        test_scenario="baseline",
+        test_data_dir=None,
+        save_test_data=None,
+    )
+    cmd = _batch_command_for_ticker(
+        args_ns,
+        ticker,
+        output_path,
+        analysis_summary_path=summary_path,
+    )
+    result = subprocess.run(
+        cmd,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not summary_path.exists():
+        return None
+
+    try:
+        return json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def _extract_confirmation_metrics(
+    summary: dict[str, Any],
+) -> tuple[float | None, float | None]:
+    """Return (implied_move, front_iv) from analysis summary payload."""
+    implied_move = _safe_float(summary.get("implied_move"))
+    front_iv = _safe_float(summary.get("front_iv"))
+    return implied_move, front_iv
+
+
+def _safe_float(value: Any) -> float | None:
+    """Convert value to float when possible; otherwise return None."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct_shift(current: float | None, baseline: float | None) -> float | None:
+    """Return absolute percent shift between two scalar values."""
+    if current is None or baseline is None:
+        return None
+    if baseline == 0:
+        return None
+    return abs((current - baseline) / baseline) * 100.0
 
 
 def _error_row(ticker: str, reason: str) -> PlaybookScanRow:
@@ -495,6 +1210,13 @@ def _safe_save_report(
             path = output_dir / filename
             html_content = render_playbook_scan_html(result, today)
             path.write_text(html_content, encoding="utf-8")
+        elif mode == "overnight":
+            output_dir.mkdir(parents=True, exist_ok=True)
+            today = scan_date.isoformat()
+            filename = f"{today}_overnight_scan.html"
+            path = output_dir / filename
+            html_content = render_playbook_scan_html(result, today)
+            path.write_text(html_content, encoding="utf-8")
         else:
             path = save_playbook_scan_report(result, output_dir=output_dir)
     except OSError as exc:
@@ -519,6 +1241,14 @@ def _format_telegram_alert(
     if mode == "pre-market":
         return (
             "[PRE-MARKET EARNINGS SCAN] "
+            f"{row.ticker}: TYPE {row.type_} | "
+            f"IV Regime: {vol_label} | "
+            f"Edge Ratio: {edge_label} ({edge_ratio_text})"
+        )
+
+    if mode == "overnight":
+        return (
+            "[OVERNIGHT EARNINGS ANALYSIS] "
             f"{row.ticker}: TYPE {row.type_} | "
             f"IV Regime: {vol_label} | "
             f"Edge Ratio: {edge_label} ({edge_ratio_text})"
@@ -551,6 +1281,8 @@ def _summary_message(
     title = (
         "[PRE-MARKET EARNINGS SCAN COMPLETE]"
         if mode == "pre-market"
+        else "[OVERNIGHT EARNINGS ANALYSIS COMPLETE]"
+        if mode == "overnight"
         else "[EARNINGS SCAN COMPLETE]"
     )
     return "\n".join(
@@ -578,7 +1310,7 @@ def _notify(
         LOGGER.info("DRY RUN ALERT:\n%s", message)
         return
 
-    if mode == "pre-market":
+    if mode in ("pre-market", "overnight"):
         _notify_via_telegram_send(message)
         return
 
@@ -680,6 +1412,10 @@ def _resolve_output_dir(output_dir: str | None, mode: str) -> Path:
         return Path(output_dir)
     if mode == "pre-market":
         return Path("reports/pre-market")
+    if mode == "overnight":
+        return Path("reports/overnight")
+    if mode == "open-confirmation":
+        return Path("reports/confirmation")
     return Path("reports/daily")
 
 

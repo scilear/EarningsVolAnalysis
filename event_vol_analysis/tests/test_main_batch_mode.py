@@ -21,6 +21,11 @@ def _base_args() -> argparse.Namespace:
         cache_dir="data/cache",
         use_cache=False,
         refresh_cache=False,
+        cache_only=False,
+        cache_spot=None,
+        cache_front_expiry=None,
+        cache_back1_expiry=None,
+        cache_back2_expiry=None,
         seed=42,
         move_model="lognormal",
         test_data=True,
@@ -174,3 +179,24 @@ def test_batch_command_includes_move_model() -> None:
 
     move_model_index = command.index("--move-model")
     assert command[move_model_index + 1] == "fat_tailed"
+
+
+def test_batch_command_includes_cache_only_overrides() -> None:
+    args = _base_args()
+    args.cache_only = True
+    args.cache_spot = 123.45
+    args.cache_front_expiry = "2026-05-15"
+    args.cache_back1_expiry = "2026-05-22"
+    args.cache_back2_expiry = "2026-06-19"
+
+    command = main_module._batch_command_for_ticker(
+        args,
+        ticker="NVDA",
+        output_path=Path("reports/nvda_earnings_report.html"),
+    )
+
+    assert "--cache-only" in command
+    assert "--cache-spot" in command
+    assert "--cache-front-expiry" in command
+    assert "--cache-back1-expiry" in command
+    assert "--cache-back2-expiry" in command

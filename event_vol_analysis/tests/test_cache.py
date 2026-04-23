@@ -113,3 +113,30 @@ def test_market_closed_detection() -> None:
         assert "market appears closed" in str(exc).lower()
     else:
         raise AssertionError("Expected ValueError for closed market")
+
+
+def test_cache_only_raises_when_no_cache(monkeypatch) -> None:
+    expiry = dt.date(2030, 1, 17)
+
+    class _NoNetworkTicker:
+        def option_chain(self, expiry_label: str):  # noqa: ARG002
+            raise AssertionError("Network should not be called in cache-only mode")
+
+    monkeypatch.setattr(
+        "event_vol_analysis.data.loader.yf.Ticker",
+        lambda ticker: _NoNetworkTicker(),
+    )
+
+    try:
+        get_options_chain(
+            "NVDA",
+            expiry,
+            cache_dir=None,
+            use_cache=True,
+            cache_db_path=None,
+            cache_only=True,
+        )
+    except ValueError as exc:
+        assert "cache-only mode" in str(exc).lower()
+    else:
+        raise AssertionError("Expected ValueError for missing cache-only data")

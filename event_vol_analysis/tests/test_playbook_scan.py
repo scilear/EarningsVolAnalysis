@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import subprocess
 import sys
@@ -508,7 +509,8 @@ class TestReportSave:
         result.compute_summary()
         output_dir = tmp_path / "reports"
         path = save_playbook_scan_report(result, output_dir)
-        assert "2026-04-22_playbook_scan.html" in str(path)
+        expected_name = f"{dt.date.today().isoformat()}_playbook_scan.html"
+        assert expected_name in str(path)
         assert path.exists()
 
 

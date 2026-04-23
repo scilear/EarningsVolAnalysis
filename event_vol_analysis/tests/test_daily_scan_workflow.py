@@ -238,12 +238,429 @@ def test_notify_pre_market_fallback_when_cli_missing(
     assert any("ALERT (fallback)" in line for line in captured)
 
 
+def _cfg(
+    mode: str,
+    tickers: list[str] | None = None,
+    use_cache: bool = False,
+    scan_date: dt.date | None = None,
+) -> daily_scan.ScanConfig:
+    return daily_scan.ScanConfig(
+        tickers=tickers or ["AAPL"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/daily"),
+        mode=mode,
+        scan_date=scan_date or dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+        use_cache=use_cache,
+        refresh_cache=False,
+        validate_cache=False,
+    )
+
+
+def test_overnight_alert_format_single_line() -> None:
+    row = _row("NVDA", type_=2, edge_label="RICH")
+    message = daily_scan._format_telegram_alert(
+        row,
+        dt.date(2026, 5, 1),
+        mode="overnight",
+    )
+    assert message.startswith("[OVERNIGHT EARNINGS ANALYSIS]")
+    assert "NVDA: TYPE 2" in message
+    assert "IV Regime:" in message
+    assert "Edge Ratio:" in message
+
+
+def test_overnight_summary_message_title() -> None:
+    message = daily_scan._summary_message(
+        dt.date(2026, 5, 1),
+        universe=5,
+        filtered=1,
+        actionable=2,
+        report_path=Path("reports/overnight/2026-05-01_overnight_scan.html"),
+        mode="overnight",
+    )
+    assert "[OVERNIGHT EARNINGS ANALYSIS COMPLETE]" in message
+
+
+def test_overnight_mode_requires_use_cache_flag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(daily_scan, "LOG_PATH", Path("/dev/null"))
+    monkeypatch.setattr(
+        daily_scan,
+        "create_store",
+        lambda path: type(
+            "S", (), {"query_eod_snapshot": lambda *args, **kwargs: None}
+        )(),
+    )
+
+    try:
+        rc = daily_scan.run(["--mode", "overnight", "--dry-run"])
+    finally:
+        monkeypatch.undo()
+
+    assert rc == 2
+    out = capsys.readouterr().err
+    assert "--use-cache" in out
+
+
+def test_validate_cache_returns_coverage_table(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _Store:
+        def validate_cache_coverage(self, tickers, date_):
+            return [
+                {
+                    "ticker": "AAPL",
+                    "has_cache": True,
+                    "quality_tag": "valid",
+                    "snapshot_ts": None,
+                    "records_valid": 40,
+                },
+                {
+                    "ticker": "MSFT",
+                    "has_cache": False,
+                    "quality_tag": None,
+                    "snapshot_ts": None,
+                    "records_valid": 0,
+                },
+            ]
+
+    monkeypatch.setattr(daily_scan, "create_store", lambda path: _Store())
+
+    cfg = daily_scan.ScanConfig(
+        tickers=["AAPL", "MSFT"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/daily"),
+        mode="full-window",
+        scan_date=dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+        use_cache=False,
+        refresh_cache=False,
+        validate_cache=True,
+    )
+    rc = daily_scan._run_validate_cache(cfg)
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "Cache Validation" in out
+    assert "AAPL" in out
+    assert "MSFT" in out
+
+
 def test_resolve_output_dir_by_mode() -> None:
     assert daily_scan._resolve_output_dir(None, "full-window") == Path("reports/daily")
     assert daily_scan._resolve_output_dir(None, "pre-market") == Path(
         "reports/pre-market"
     )
+    assert daily_scan._resolve_output_dir(None, "overnight") == Path(
+        "reports/overnight"
+    )
+    assert daily_scan._resolve_output_dir(None, "open-confirmation") == Path(
+        "reports/confirmation"
+    )
     assert daily_scan._resolve_output_dir("x/y", "pre-market") == Path("x/y")
+
+
+def test_safe_save_report_overnight_filename(
+    tmp_path: Path,
+) -> None:
+    result = PlaybookScanResult(
+        rows=[_row("NVDA", type_=1)],
+        filtered_out=[],
+        frequency_warning_fired=False,
+    )
+    result.compute_summary()
+
+    path = daily_scan._safe_save_report(
+        result,
+        output_dir=tmp_path / "reports" / "overnight",
+        mode="overnight",
+        scan_date=dt.date(2026, 5, 1),
+    )
+    assert path is not None
+    assert path.name == "2026-05-01_overnight_scan.html"
+
+
+def test_notify_overnight_uses_telegram_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, object] = {"ran": False, "cmd": None}
+
+    monkeypatch.setattr(
+        daily_scan.shutil, "which", lambda name: "/usr/bin/telegram-send"
+    )
+
+    def _fake_run(command, check=False, capture_output=True, text=True):
+        called["ran"] = True
+        called["cmd"] = command
+
+        class _Result:
+            returncode = 0
+            stderr = ""
+
+        return _Result()
+
+    monkeypatch.setattr(daily_scan.subprocess, "run", _fake_run)
+    daily_scan._notify("hello", dry_run=False, mode="overnight")
+    assert called["ran"] is True
+    assert called["cmd"] == ["/usr/bin/telegram-send", "hello"]
+
+
+def test_run_dispatch_eod_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _Store:
+        def query_eod_snapshot(self, *args, **kwargs):
+            return None
+
+        def store_eod_snapshot(self, **kwargs) -> None:
+            pass
+
+        def store_chain(self, **kwargs) -> dict:
+            return {"total": 10, "valid": 10, "filtered": 0}
+
+    monkeypatch.setattr(daily_scan, "create_store", lambda path: _Store())
+    monkeypatch.setattr(daily_scan, "LOG_PATH", Path("/dev/null"))
+    monkeypatch.setattr(daily_scan, "get_spot_price", lambda ticker: 150.0)
+    monkeypatch.setattr(
+        daily_scan, "get_option_expiries", lambda ticker: [dt.date(2026, 5, 15)]
+    )
+    monkeypatch.setattr(
+        daily_scan,
+        "get_options_chain",
+        lambda *args, **kwargs: pd.DataFrame(
+            {
+                "strike": [150.0],
+                "bid": [5.0],
+                "ask": [5.5],
+                "impliedVolatility": [0.30],
+                "openInterest": [100],
+            }
+        ),
+    )
+
+    cfg = daily_scan.ScanConfig(
+        tickers=["AAPL"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/daily"),
+        mode="eod-refresh",
+        scan_date=dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+        use_cache=False,
+        refresh_cache=False,
+        validate_cache=False,
+    )
+    rc = daily_scan._run_eod_refresh(cfg)
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "EOD Refresh" in out
+    assert "AAPL" in out
+
+
+def test_run_dispatch_open_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(daily_scan, "LOG_PATH", Path("/dev/null"))
+    monkeypatch.setattr(
+        daily_scan,
+        "_load_overnight_analysis_summary",
+        lambda scan_date, ticker, overnight_dir=None: (
+            {
+                "event_date": "2026-05-01",
+                "implied_move": 0.05,
+                "front_iv": 0.30,
+            }
+            if ticker == "AAPL"
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        daily_scan,
+        "_run_live_confirmation_summary",
+        lambda cfg, ticker: (
+            {
+                "event_date": "2026-05-01",
+                "implied_move": 0.057,
+                "front_iv": 0.36,
+            }
+            if ticker == "AAPL"
+            else None
+        ),
+    )
+
+    cfg = daily_scan.ScanConfig(
+        tickers=["AAPL", "MSFT"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/confirmation"),
+        mode="open-confirmation",
+        scan_date=dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+        use_cache=False,
+        refresh_cache=True,
+        validate_cache=False,
+    )
+    rc = daily_scan._run_open_confirmation(cfg)
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "Open Confirmation" in out
+    assert "AAPL" in out
+    assert "MSFT" in out
+    assert "MATERIAL SHIFT" in out
+
+
+def test_run_overnight_skips_ticker_without_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _Store:
+        def query_eod_snapshot(self, ticker, date_, min_quality="valid"):
+            return None
+
+    monkeypatch.setattr(daily_scan, "create_store", lambda path: _Store())
+    monkeypatch.setattr(daily_scan, "LOG_PATH", Path("/dev/null"))
+
+    cfg = daily_scan.ScanConfig(
+        tickers=["AAPL"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/overnight"),
+        mode="overnight",
+        scan_date=dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+        use_cache=True,
+        refresh_cache=False,
+        validate_cache=False,
+    )
+    rc = daily_scan._run_overnight_analysis(cfg)
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "OVERNIGHT" in out or "Filtered: 1" in out
+
+
+def test_overnight_does_not_fallback_to_live_spot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Store:
+        def query_eod_snapshot(self, ticker, date_, min_quality="valid"):
+            return {
+                "timestamp": dt.datetime(2026, 5, 1, 16, 0, tzinfo=dt.timezone.utc),
+                "quality_tag": "valid",
+                "records_valid": 40,
+                "spot_price": None,
+                "expiry_set": '["2026-05-15"]',
+            }
+
+    monkeypatch.setattr(daily_scan, "create_store", lambda path: _Store())
+
+    def _should_not_call(_ticker: str) -> float:
+        raise AssertionError("get_spot_price should not be called in overnight mode")
+
+    monkeypatch.setattr(daily_scan, "get_spot_price", _should_not_call)
+
+    cfg = daily_scan.ScanConfig(
+        tickers=["AAPL"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/overnight"),
+        mode="overnight",
+        scan_date=dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+        use_cache=True,
+        refresh_cache=False,
+        validate_cache=False,
+    )
+    rc = daily_scan._run_overnight_analysis(cfg)
+    assert rc == 0
+
+
+def test_derive_eod_quality_tag_thresholds() -> None:
+    assert daily_scan._derive_eod_quality_tag(100, 96) == "valid"
+    assert daily_scan._derive_eod_quality_tag(100, 70) == "partial"
+    assert daily_scan._derive_eod_quality_tag(100, 0) == "zero"
+
+
+def test_is_snapshot_stale_uses_24h_threshold() -> None:
+    now = dt.datetime(2026, 5, 2, 22, 30, tzinfo=dt.timezone.utc)
+    fresh = {"timestamp": dt.datetime(2026, 5, 2, 3, 0, tzinfo=dt.timezone.utc)}
+    stale = {"timestamp": dt.datetime(2026, 5, 1, 20, 0, tzinfo=dt.timezone.utc)}
+
+    assert daily_scan._is_snapshot_stale(fresh, now) is False
+    assert daily_scan._is_snapshot_stale(stale, now) is True
+
+
+def test_apply_hard_filters_pre_market_uses_eod_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Store:
+        def query_eod_snapshot(self, ticker, date_, min_quality="valid"):
+            return {
+                "timestamp": dt.datetime(2026, 5, 1, 16, 0, tzinfo=dt.timezone.utc),
+                "quality_tag": "valid",
+                "records_valid": 40,
+                "spot_price": 100.0,
+                "expiry_set": '["2026-05-15"]',
+            }
+
+    monkeypatch.setattr(daily_scan, "create_store", lambda path: _Store())
+    monkeypatch.setattr(
+        daily_scan,
+        "load_cached_chain_at_date",
+        lambda *args, **kwargs: pd.DataFrame(
+            {
+                "strike": [100.0, 100.0],
+                "bid": [4.8, 5.0],
+                "ask": [5.0, 5.2],
+                "mid": [4.9, 5.1],
+                "option_type": ["call", "put"],
+                "openInterest": [2000, 2100],
+                "volume": [2500, 2400],
+            }
+        ),
+    )
+
+    def _should_not_call(*args, **kwargs):
+        raise AssertionError("Live fetch should not be called in pre-market mode")
+
+    monkeypatch.setattr(daily_scan, "get_spot_price", _should_not_call)
+    monkeypatch.setattr(daily_scan, "get_option_expiries", _should_not_call)
+    monkeypatch.setattr(daily_scan, "get_options_chain", _should_not_call)
+
+    cfg = daily_scan.ScanConfig(
+        tickers=["AAPL"],
+        db_path="data/options_intraday.db",
+        output_dir=Path("reports/pre-market"),
+        mode="pre-market",
+        scan_date=dt.date(2026, 5, 1),
+        days_ahead=14,
+        limit_per_ticker=8,
+        dry_run=True,
+        use_cache=False,
+        refresh_cache=False,
+        validate_cache=False,
+    )
+    events = [{"ticker": "AAPL", "event_date": dt.date(2026, 5, 1)}]
+    passed, filtered = daily_scan._apply_hard_filters(cfg, events)
+
+    assert len(passed) == 1
+    assert not filtered
 
 
 def test_resolve_scan_date_invalid() -> None:
@@ -294,6 +711,9 @@ def test_fetch_upcoming_events_pre_market_exact_date(
         days_ahead=14,
         limit_per_ticker=8,
         dry_run=True,
+        use_cache=False,
+        refresh_cache=False,
+        validate_cache=False,
     )
     events = daily_scan._fetch_upcoming_earnings_events(cfg)
     assert len(events) == 1
