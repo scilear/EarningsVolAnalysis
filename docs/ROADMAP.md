@@ -690,13 +690,13 @@ This repository only owns the `earningsvol query` CLI and Structure Advisor code
 
 ## Deferred Backlog (Valid, Not Frontline)
 
-- Broken-wing butterfly (structure coverage)
+- Broken-wing butterfly (structure coverage) — **pulled forward into post-T041 hardening**
 - Diagonal spread (structure coverage) — **pulled forward into T039**
 - Risk reversal (structure coverage) — **pulled forward into T039**
-- Jade lizard, 1×2 ratio spread (structure coverage)
+- Jade lizard, 1×2 ratio spread (structure coverage) — **pulled forward into post-T041 hardening**
 - Skew-dynamics modeling
-- Early assignment warning layer
-- Portfolio notional limit enforcement
+- Early assignment warning layer — **pulled forward into post-T041 hardening**
+- Portfolio notional limit enforcement — **pulled forward into post-T041 hardening**
 - Relative value expression (long/short pair trades — deferred until single-name
   directional is validated over at least one full earnings season)
 - Same-day fade pathway for TYPE 4 leader overshoot (requires intraday data;
