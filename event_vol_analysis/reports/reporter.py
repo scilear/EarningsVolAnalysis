@@ -137,6 +137,12 @@ HTML_TEMPLATE = """\
         <th>Signal Strength</th>
         <td>{{ "%.2f" | format(snapshot.regime.gamma_confidence) }}</td>
       </tr>
+      <tr>
+        <th>Macro Vehicle Class</th>
+        <td>{{ snapshot.regime.macro_vehicle_class }}</td>
+        <th>Forward Model Needed</th>
+        <td>{{ snapshot.regime.macro_requires_forward_model }}</td>
+      </tr>
       <tr class="highlight-row">
         <th>Composite Event Regime</th>
         <td><strong>{{ snapshot.regime.composite_regime }}</strong></td>
@@ -144,6 +150,9 @@ HTML_TEMPLATE = """\
         <td><strong>{{ "%.2f" | format(snapshot.regime.confidence) }}</strong></td>
       </tr>
     </table>
+    {% if snapshot.regime.macro_vehicle_note %}
+    <p class="note">{{ snapshot.regime.macro_vehicle_note }}</p>
+    {% endif %}
   </div>
 
   {% if snapshot.type_classification %}
@@ -520,6 +529,12 @@ HTML_TEMPLATE = """\
       <td>{{ snapshot.gex_abs | format_gex }}</td>
     </tr>
     <tr>
+      <th>Net Vanna</th>
+      <td>{{ snapshot.vanna_net | format_gex }}</td>
+      <th>Net Charm</th>
+      <td>{{ snapshot.charm_net | format_gex }}</td>
+    </tr>
+    <tr>
       <th>Front GEX</th>
       <td>{{ snapshot.front_gex | format_gex }}</td>
       <th>Back GEX</th>
@@ -556,6 +571,42 @@ HTML_TEMPLATE = """\
     </tr>
     {% endfor %}
   </table>
+
+  <h4>Pin Strikes (&gt;= 15% of Abs GEX)</h4>
+  {% if snapshot.pin_strikes %}
+  <table>
+    <tr>
+      <th>Strike</th>
+      <th>GEX</th>
+      <th>% of Abs GEX</th>
+    </tr>
+    {% for row in snapshot.pin_strikes %}
+    <tr>
+      <td>${{ "%.2f" | format(row.strike) }}</td>
+      <td>{{ row.gex | format_gex }}</td>
+      <td>{{ "%.1f" | format(row.abs_pct * 100) }}%</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No pin strikes detected under the 15% threshold.</p>
+  {% endif %}
+
+  {% if snapshot.gex_by_strike_top %}
+  <h4>Strike-Level GEX (Top 15 by |GEX|)</h4>
+  <table>
+    <tr>
+      <th>Strike</th>
+      <th>Net Strike GEX</th>
+    </tr>
+    {% for strike, value in snapshot.gex_by_strike_top %}
+    <tr>
+      <td>${{ "%.2f" | format(strike) }}</td>
+      <td>{{ value | format_gex }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
 
   <div class="grid">
     <div>

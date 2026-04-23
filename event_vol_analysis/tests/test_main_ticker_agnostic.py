@@ -59,8 +59,17 @@ def test_main_uses_explicit_non_nvda_ticker_in_test_data_mode(
     assert "positioning" in captured["context"]["snapshot"]
     assert "signal_graph" in captured["context"]["snapshot"]
     assert "type_classification" in captured["context"]["snapshot"]
+    assert "vanna_net" in captured["context"]["snapshot"]
+    assert "charm_net" in captured["context"]["snapshot"]
+    assert "pin_strikes" in captured["context"]["snapshot"]
+    assert "gex_by_strike_top" in captured["context"]["snapshot"]
     assert "ivr" in captured["context"]["regime"]
     assert "ivp" in captured["context"]["regime"]
+    assert "vanna_net" in captured["context"]["regime"]
+    assert "charm_net" in captured["context"]["regime"]
+    assert "macro_vehicle_class" in captured["context"]["regime"]
+    assert "macro_vehicle_supported" in captured["context"]["regime"]
+    assert "macro_requires_forward_model" in captured["context"]["regime"]
 
 
 def test_load_tickers_from_file_supports_csv_and_newlines(tmp_path: Path) -> None:

@@ -23,9 +23,9 @@
 | T009 | Macro ETF research workbook | P1 | T006,T008 | completed |
 | T010 | QuantConnect replay scaffold | P1 | T002,T006 | completed |
 | T011 | Output contract and reporting bridge | P1 | T001,T003,T004 | completed |
-| T012 | Dependency and env cleanup | P2 | - | pending |
-| T013 | Test strategy for migration | P2 | - | pending |
-| T014 | Task discovery follow-ups | P2 | - | pending |
+| T012 | Dependency and env cleanup | P2 | - | completed |
+| T013 | Test strategy for migration | P2 | - | completed |
+| T014 | Task discovery follow-ups | P2 | - | completed |
 | T015 | Gamma alignment fix | P0 | - | completed |
 | T016 | Ticker-agnostic audit | P0 | - | completed |
 | T017 | Symmetric butterfly | P1 | T022 | completed |
@@ -44,6 +44,12 @@
 | T030 | Post-earnings outcome tracking | P2 | T002,T027 | completed |
 | T031 | Calibration loop | P2 | T030 | completed |
 | T032 | Automated earnings season workflow | P2 | T029,T031 | completed |
+| T033 | Vanna exposure by underlying | P2 | T022 | completed |
+| T034 | Charm exposure | P2 | T022 | completed |
+| T035 | By-strike GEX breakdown | P2 | T022 | completed |
+| T036 | Macro event vehicle support | P2 | T033,T034,T035 | completed |
+| T037 | Regime-conditioned edge ratio for macro event types | P2 | T038 | completed |
+| T038 | Macro binary event outcomes store | P2 | T002 | completed |
 | T039 | Structure library + payoff-type mapping | P2 | T022 | completed |
 | T040 | Structure Advisor core (structure_advisor.py) | P2 | T039 | completed |
 | T041 | CLI integration + agent skill update | P2 | T040 | completed |
@@ -79,9 +85,9 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T009 | tasks/task_009.md | completed |
 | T010 | tasks/task_010.md | completed |
 | T011 | tasks/task_011.md | completed |
-| T012 | tasks/task_012.md | pending   |
-| T013 | tasks/task_013.md | pending   |
-| T014 | tasks/task_014.md | pending   |
+| T012 | tasks/task_012.md | completed |
+| T013 | tasks/task_013.md | completed |
+| T014 | tasks/task_014.md | completed |
 | T015 | tasks/task_015.md | completed |
 | T016 | tasks/task_016.md | completed |
 | T017 | tasks/task_017.md | completed |
@@ -100,6 +106,12 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T030 | tasks/task_030.md | completed |
 | T031 | tasks/task_031.md | completed |
 | T032 | tasks/task_032.md | completed |
+| T033 | tasks/task_033.md | completed |
+| T034 | tasks/task_034.md | completed |
+| T035 | tasks/task_035.md | completed |
+| T036 | tasks/task_036.md | completed |
+| T037 | tasks/task_037.md | completed |
+| T038 | tasks/task_038.md | completed |
 | T039 | tasks/task_039.md | completed |
 | T040 | tasks/task_040.md | completed |
 | T041 | tasks/task_041.md | completed |

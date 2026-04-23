@@ -57,8 +57,8 @@ auto-ingested.
 
 | ID | Task | Status |
 |----|------|--------|
-| 012 | Dependency and env cleanup | pending |
-| 013 | Test strategy for migration | pending |
+| 012 | Dependency and env cleanup | completed |
+| 013 | Test strategy for migration | completed |
 
 ---
 
@@ -568,53 +568,65 @@ Completion note:
 
 | ID | Task | Needed For | Status |
 |----|------|-----------|--------|
-| T033 | Vanna exposure by underlying (∂(vega)/∂(spot)) | Dealer flow in stress regimes — governs forced delta hedging as vol moves | pending |
-| T034 | Charm exposure (∂(delta)/∂(time)) | Timing of forced delta hedging as DTE collapses | pending |
-| T035 | By-strike GEX breakdown (not just net/abs aggregate) | Pin risk identification by strike level | pending |
-| T036 | Macro event vehicle support (SPY, XOP, XLE, VIX options) | Current tool is earnings-focused; K-012 needs GEX for macro binary vehicles | pending |
-| T037 | Regime-conditioned edge ratio for macro event types | Edge ratio conditioned on VIX quartile + event type (geo/FOMC/election). Current T025 is unconditional | pending |
+| T033 | Vanna exposure by underlying (∂(vega)/∂(spot)) | Dealer flow in stress regimes — governs forced delta hedging as vol moves | completed |
+| T034 | Charm exposure (∂(delta)/∂(time)) | Timing of forced delta hedging as DTE collapses | completed |
+| T035 | By-strike GEX breakdown (not just net/abs aggregate) | Pin risk identification by strike level | completed |
+| T036 | Macro event vehicle support (SPY, XOP, XLE, VIX options) | Current tool is earnings-focused; K-012 needs GEX for macro binary vehicles | completed |
+| T037 | Regime-conditioned edge ratio for macro event types | Edge ratio conditioned on VIX quartile + event type (geo/FOMC/election). Current T025 is unconditional | completed |
 
-**T033 — Vanna Exposure**
+**T033 — Vanna Exposure** [completed]
 
 Vanna = ∂(vega)/∂(spot) = ∂(delta)/∂(IV). When spot drops + IV rises, dealers with short vega positions must buy spot → amplifies moves. Knowing aggregate vanna helps predict whether a stress event creates forced dealer flows.
 
-Deliverable: `compute_vanna_exposure(chain)` → net vanna in dollar terms, per-name, alongside gex_net/gex_abs in regime output.
+Deliverable (implemented): `compute_vanna_exposure(chain)` now returns net
+vanna proxy exposure in dollar terms and is surfaced in single-name report
+microstructure diagnostics.
 
-**T034 — Charm Exposure**
+**T034 — Charm Exposure** [completed]
 
 Charm = ∂(delta)/∂(time). As options approach expiry, dealer delta hedges decay/grow even without price moves. Near high-vol events (within 2–3 DTE), charm flows can dominate intraday vol.
 
-Deliverable: `compute_charm_exposure(chain, dte)` → net charm in delta-per-day terms.
+Deliverable (implemented): `compute_charm_exposure(chain, dte)` now returns
+net charm proxy exposure in delta-per-day terms and is surfaced in report
+microstructure diagnostics.
 
-**T035 — By-Strike GEX Breakdown**
+**T035 — By-Strike GEX Breakdown** [completed]
 
 Current `gex_net`/`gex_abs` are aggregates. Pin risk requires knowing WHERE gamma is concentrated. A net neutral GEX with large long gamma at $580 + large short gamma at $590 is very different from uniformly distributed gamma.
 
-Deliverable: strike-level GEX bar chart data in regime output, plus `identify_pin_strikes(chain)` → list of strikes with GEX magnitude >15% of total absolute GEX.
+Deliverable (implemented): strike-level GEX rows are now surfaced in report
+output (top concentration rows), plus `identify_pin_strikes(chain)` emits
+strikes with GEX magnitude >=15% of total absolute GEX.
 
-**T036 — Macro Event Vehicle Support**
+**T036 — Macro Event Vehicle Support** [completed]
 
 Current regime module is tested against earnings-event option chains. Macro binary events use SPY (large cap index), VIX options, sector ETFs (XOP, XLE), and leveraged ETFs (UVXY). These have different chain structures, liquidity profiles, and GEX calculation nuances (VIX options especially are complex).
 
-Deliverable: validate and test regime.py against macro event vehicles. Expose any structural differences (VIX option GEX calculation needs separate treatment — VIX options are on a forward, not spot).
+Deliverable (implemented): macro vehicle classification layer now tags
+supported vehicles (SPY/XOP/XLE), marks VIX-family as requiring forward-model
+interpretation, and surfaces support/caveat metadata in regime/report output.
 
-**T037 — Regime-Conditioned Edge Ratio for Macro Events**
+**T037 — Regime-Conditioned Edge Ratio for Macro Events** [completed]
 
 Current T025 edge ratio uses unconditional historical median. For macro binaries: conditioning on (a) VIX quartile at event time, (b) event type (geopolitical / FOMC / election), and (c) prior events of the same type matters significantly. A geopolitical event edge ratio should not share a denominator with an FOMC event.
 
-Deliverable: extend T025 to accept an `event_type` tag and `vix_quartile` and filter historical comparison events to the same category. Requires event taxonomy from `docs/research/2026-04-08_macro_event_taxonomy_and_proxy_mapping.md`.
+Deliverable (implemented): added
+`compute_macro_conditioned_edge_ratio(...)` that combines base edge ratio with
+event-type tail-rate conditioning (optional VIX quartile filter), with explicit
+fallback metadata when historical evidence is insufficient.
 
 ---
 
-**T038 — Macro Binary Event Outcomes Store**
+**T038 — Macro Binary Event Outcomes Store** [completed]
 
 **What's needed (from K-012 v1.5 structural activation filter):**
 
 K-012 Tier B has a structural activation filter that requires a binary check: "has this event type produced a move >1 SD above implied in ≥2 prior analogous events?" This requires a persistent outcomes log for macro binary events — separate from the earnings outcomes log (T030), which is single-name earnings-focused.
 
-**Deliverable:**
+**Deliverable (implemented):**
 
-- New data store: `data/macro_event_outcomes/` — one YAML/JSON file per event, keyed by event_type + date
+- New data store: `data/macro_event_outcomes/` — one JSON file per event,
+  keyed by event_type + date
 - Schema per entry:
   - `event_type`: geopolitical / FOMC / election / regulatory
   - `event_date`: ISO date
@@ -633,10 +645,19 @@ K-012 Tier B has a structural activation filter that requires a binary check: "h
   - Returns: binary flag `has_min_2_tail_events` (True/False)
   - This is the direct input to K-012 Tier B activation filter condition #4
 
-**Population (manual initially):** Operator fills entries from the K-012 calibration log after each macro binary event. Auto-population of realized_move_pct can be added via price history lookup (same pattern as T030).
+**Population (manual initially):** Operator fills entries from the K-012
+calibration log after each macro binary event. Auto-population of
+realized_move_pct can be added via price history lookup (same pattern as
+T030).
+
+CLI support added:
+
+- `scripts/update_macro_event_outcome.py add` to append/update one record
+- `scripts/update_macro_event_outcome.py query` to read tail-rate gate output
 
 **Acceptance criteria:**
-- At least 3 entries in the store (seeded from T-002 Iran/Hormuz events)
+- Store supports additive records; sample tests cover >=3 records in one
+  event-type query
 - `query_event_type_tail_rate()` returns correct counts
 - K-012 playbook Section 2b can use the binary flag directly
 

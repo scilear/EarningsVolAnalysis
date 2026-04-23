@@ -263,8 +263,38 @@ For macro catalysts:
 
 1. Choose catalyst and proxy explicitly.
 2. Register event rows and snapshot bindings.
-3. Run macro workbook summary.
-4. Export QC scaffold for comparative research.
+3. Update macro binary outcomes (`add`) and verify tail-rate gate (`query`).
+4. Run macro workbook summary with event-type conditioning inputs.
+5. Export QC scaffold for comparative research.
+
+Macro binary outcomes commands:
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  scripts/update_macro_event_outcome.py add \
+  --event-type geopolitical \
+  --event-date 2026-04-10 \
+  --underlying SPY \
+  --implied-move 0.02 \
+  --realized-move 0.03 \
+  --vix 28.0 \
+  --vvix-percentile 75 \
+  --gex-zone "Strong Amplified" \
+  --vol-crush -0.06
+
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  scripts/update_macro_event_outcome.py query \
+  --event-type geopolitical \
+  --threshold 1.0
+
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  research/macro/macro_event_workbook.py \
+  --db data/options_intraday.db \
+  --event-name cpi \
+  --proxy-symbol TLT \
+  --macro-event-type fomc \
+  --tail-threshold-sd 1.0
+```
 
 ## 5) Failure Modes and Fixes
 

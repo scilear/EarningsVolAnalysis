@@ -19,6 +19,7 @@ The product is one tool with two functions:
 - Strategy reference: `docs/strategies/index.md`
 - Option storage model: `docs/OPTIONS_DATA_STORAGE.md`
 - Research notes and logs: `docs/research/`
+- Macro outcomes CLI: `scripts/update_macro_event_outcome.py`
 
 ## Legacy and Historical Docs
 

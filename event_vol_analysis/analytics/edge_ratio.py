@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from event_vol_analysis.analytics.historical import ConditionalExpected
+from event_vol_analysis.macro_outcomes import query_event_type_tail_rate
 
 
 # Thresholds from earnings-playbook.md v1; review after 20+ observations in
@@ -31,6 +32,23 @@ class EdgeRatio:
     confidence: str
     secondary_ratio: float | None
     label_disagreement: bool
+    note: str
+
+
+@dataclass(frozen=True)
+class MacroConditionedEdgeRatio:
+    """Edge-ratio diagnostics conditioned on macro event type and regime."""
+
+    base: EdgeRatio
+    conditioned_ratio: float | None
+    conditioned_label: str | None
+    conditioned_confidence: str
+    denominator_source: str
+    event_type: str | None
+    vix_quartile: int | None
+    historical_total: int
+    historical_tail_events: int
+    has_min_2_tail_events: bool
     note: str
 
 
@@ -75,6 +93,77 @@ def compute_edge_ratio(
         secondary_ratio=secondary_ratio,
         label_disagreement=label_disagreement,
         note=note,
+    )
+
+
+def compute_macro_conditioned_edge_ratio(
+    implied: float,
+    conditional_expected: ConditionalExpected,
+    *,
+    event_type: str,
+    vix_quartile: int | None = None,
+    threshold_sd: float = 1.0,
+    data_dir: str = "data/macro_event_outcomes",
+) -> MacroConditionedEdgeRatio:
+    """Compute macro-conditioned edge ratio using event-type tail evidence.
+
+    The base edge ratio is always computed. If there is enough historical
+    macro evidence (`has_min_2_tail_events`), the denominator is conditioned by
+    an additive tail multiplier based on observed tail rate:
+
+    conditioned_expected = primary_expected * (1 + tail_rate)
+    """
+
+    base = compute_edge_ratio(implied, conditional_expected)
+    summary = query_event_type_tail_rate(
+        event_type=event_type,
+        threshold_sd=threshold_sd,
+        vix_quartile=vix_quartile,
+        data_dir=data_dir,
+    )
+
+    historical_total = int(summary["total_events"])
+    tail_events = int(summary["tail_event_count"])
+    has_min_2 = bool(summary["has_min_2_tail_events"])
+    tail_rate = float(summary["tail_rate"])
+
+    if not has_min_2:
+        return MacroConditionedEdgeRatio(
+            base=base,
+            conditioned_ratio=None,
+            conditioned_label=None,
+            conditioned_confidence="LOW",
+            denominator_source="unconditioned",
+            event_type=event_type,
+            vix_quartile=vix_quartile,
+            historical_total=historical_total,
+            historical_tail_events=tail_events,
+            has_min_2_tail_events=False,
+            note=(
+                "Insufficient analogous macro tail history; using base edge ratio only."
+            ),
+        )
+
+    conditioned_expected = float(base.conditional_expected_primary) * (1.0 + tail_rate)
+    conditioned_ratio = float(implied) / conditioned_expected
+    conditioned_label = _label_from_ratio(conditioned_ratio)
+    conditioned_confidence = base.confidence
+
+    return MacroConditionedEdgeRatio(
+        base=base,
+        conditioned_ratio=conditioned_ratio,
+        conditioned_label=conditioned_label,
+        conditioned_confidence=conditioned_confidence,
+        denominator_source="macro_tail_conditioned",
+        event_type=event_type,
+        vix_quartile=vix_quartile,
+        historical_total=historical_total,
+        historical_tail_events=tail_events,
+        has_min_2_tail_events=True,
+        note=(
+            "Conditioned denominator scales primary expected move by "
+            f"(1 + tail_rate={tail_rate:.3f})."
+        ),
     )
 
 

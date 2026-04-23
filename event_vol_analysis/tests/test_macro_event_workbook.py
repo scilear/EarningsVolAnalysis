@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from data.option_data_store import create_store
+from event_vol_analysis.macro_outcomes import store_macro_event_outcome
 from research.macro.macro_event_workbook import (
     MacroWorkbookConfig,
     build_workbook_summary,
@@ -89,27 +90,90 @@ def _seed_macro_sample(db_path: Path) -> None:
 def test_build_workbook_summary_returns_macro_sections(tmp_path: Path) -> None:
     db_path = tmp_path / "macro.db"
     _seed_macro_sample(db_path)
+    store_macro_event_outcome(
+        event_type="fomc",
+        event_date="2026-06-12",
+        underlying="SPY",
+        implied_move_pct=0.015,
+        realized_move_pct=0.024,
+        vix_at_entry=21.0,
+        vvix_percentile_at_entry=66.0,
+        gex_zone="Uncertain",
+        vol_crush=-0.04,
+        data_dir=tmp_path / "macro_event_outcomes",
+    )
+    store_macro_event_outcome(
+        event_type="fomc",
+        event_date="2026-07-29",
+        underlying="SPY",
+        implied_move_pct=0.014,
+        realized_move_pct=0.021,
+        vix_at_entry=19.0,
+        vvix_percentile_at_entry=62.0,
+        gex_zone="Neutral",
+        vol_crush=-0.03,
+        data_dir=tmp_path / "macro_event_outcomes",
+    )
 
     summary = build_workbook_summary(
-        MacroWorkbookConfig(db_path=str(db_path), event_name="cpi", proxy_symbol="TLT")
+        MacroWorkbookConfig(
+            db_path=str(db_path),
+            event_name="cpi",
+            proxy_symbol="TLT",
+            macro_event_type="fomc",
+            macro_outcomes_dir=str(tmp_path / "macro_event_outcomes"),
+        )
     )
 
     assert summary["coverage"]["events"] == 1
     assert summary["event_timing"]["events_with_precise_timestamp"] == 1
     assert summary["event_timing"]["proxy_symbols"] == ["TLT"]
     assert summary["structure_outcomes"][0]["structure_code"] == "long_straddle_atm"
+    assert summary["tail_rate_gate"]["event_type"] == "fomc"
+    assert summary["tail_rate_gate"]["has_min_2_tail_events"] is True
 
 
 def test_render_markdown_contains_expected_sections(tmp_path: Path) -> None:
     db_path = tmp_path / "macro.db"
     _seed_macro_sample(db_path)
+    store_macro_event_outcome(
+        event_type="fomc",
+        event_date="2026-06-12",
+        underlying="SPY",
+        implied_move_pct=0.015,
+        realized_move_pct=0.024,
+        vix_at_entry=21.0,
+        vvix_percentile_at_entry=66.0,
+        gex_zone="Uncertain",
+        vol_crush=-0.04,
+        data_dir=tmp_path / "macro_event_outcomes",
+    )
+    store_macro_event_outcome(
+        event_type="fomc",
+        event_date="2026-07-29",
+        underlying="SPY",
+        implied_move_pct=0.014,
+        realized_move_pct=0.021,
+        vix_at_entry=19.0,
+        vvix_percentile_at_entry=62.0,
+        gex_zone="Neutral",
+        vol_crush=-0.03,
+        data_dir=tmp_path / "macro_event_outcomes",
+    )
 
     markdown = render_markdown(
         build_workbook_summary(
-            MacroWorkbookConfig(db_path=str(db_path), event_name="cpi", proxy_symbol="TLT")
+            MacroWorkbookConfig(
+                db_path=str(db_path),
+                event_name="cpi",
+                proxy_symbol="TLT",
+                macro_event_type="fomc",
+                macro_outcomes_dir=str(tmp_path / "macro_event_outcomes"),
+            )
         )
     )
 
     assert "# Macro Event Workbook" in markdown
     assert "## Event Timing" in markdown
     assert "long_straddle_atm" in markdown
+    assert "## Tail Rate Gate" in markdown

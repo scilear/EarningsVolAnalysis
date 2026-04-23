@@ -10,9 +10,9 @@ Classifies the current market environment into structured regimes:
 
 from __future__ import annotations
 
-import numpy as np
-from typing import Dict, Any
+from typing import Any
 
+from event_vol_analysis.analytics.macro_vehicles import classify_macro_vehicle
 from event_vol_analysis.analytics.vol_regime import (
     classify_from_iv_history,
     compute_term_structure_slope,
@@ -21,24 +21,30 @@ from event_vol_analysis.analytics.vol_regime import (
 )
 
 
-def classify_regime(snapshot: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Classify the current market regime into structured categories.
+def classify_regime(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Classify the current market regime into structured categories.
 
     Args:
         snapshot: Dictionary containing market data:
             - implied_move: float (implied move as decimal)
             - historical_p75: float (historical P75 move as decimal)
             - historical_p90: float (historical P90 move as decimal, optional)
-            - event_variance_ratio: float (event variance / total front variance)
+            - event_variance_ratio: float
+              (event variance / total front variance)
             - front_iv: float (front expiry ATM IV as decimal)
             - back_iv: float (back1 expiry ATM IV as decimal)
             - back2_iv: float (back2 expiry ATM IV as decimal, optional)
             - gex_net: float (net dealer gamma exposure in $)
             - gex_abs: float (absolute dealer gamma exposure in $)
+            - vanna_net: float (net vanna exposure proxy)
+            - charm_net: float (net charm exposure proxy)
+            - gex_by_strike: list[(strike, gex)] (strike-level gex map)
+            - pin_strikes: list[dict] (strikes with concentrated gamma)
             - spot: float (current spot price)
-            - mean_abs_move: float (mean absolute historical move as decimal)
-            - median_abs_move: float (median absolute historical move as decimal)
+            - mean_abs_move: float
+              (mean absolute historical move as decimal)
+            - median_abs_move: float
+              (median absolute historical move as decimal)
             - skewness: float (skewness of signed moves)
             - kurtosis: float (kurtosis of signed moves)
 
@@ -96,6 +102,11 @@ def classify_regime(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     gex_net = snapshot["gex_net"]
     gex_abs = snapshot["gex_abs"]
     gex_ratio = abs(gex_net) / gex_abs if gex_abs > 0 else 0
+    vanna_net = float(snapshot.get("vanna_net", 0.0) or 0.0)
+    charm_net = float(snapshot.get("charm_net", 0.0) or 0.0)
+    pin_strikes = snapshot.get("pin_strikes", [])
+    gex_by_strike = snapshot.get("gex_by_strike", [])
+    vehicle_profile = classify_macro_vehicle(snapshot.get("ticker"))
 
     if gex_net < 0 and gex_ratio > 0.7:
         gamma_label = "Amplified Move Regime"
@@ -135,6 +146,18 @@ def classify_regime(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         "event_regime": event_label,
         "term_structure_regime": term_label,
         "gamma_regime": gamma_label,
+        "vanna_net": vanna_net,
+        "charm_net": charm_net,
+        "pin_strikes": pin_strikes,
+        "gex_by_strike_top": sorted(
+            gex_by_strike,
+            key=lambda row: abs(float(row[1])),
+            reverse=True,
+        )[:15],
+        "macro_vehicle_class": vehicle_profile.class_label,
+        "macro_vehicle_supported": vehicle_profile.supported,
+        "macro_requires_forward_model": (vehicle_profile.requires_forward_model),
+        "macro_vehicle_note": vehicle_profile.note,
         "composite_regime": composite,
         "vol_ratio": ratio_p75,
         "gex_ratio": gex_ratio,

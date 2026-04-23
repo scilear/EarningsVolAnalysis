@@ -41,6 +41,12 @@ Reference commands:
 4. Run workbook summary for realized move, IV crush, and replay outcomes.
 5. Keep only complete events in reusable sample sets.
 
+For macro binary catalysts, additionally:
+
+6. Append macro outcome via `scripts/update_macro_event_outcome.py add`.
+7. Verify activation evidence via
+   `scripts/update_macro_event_outcome.py query --event-type <type>`.
+
 Reference commands:
 
 ```bash

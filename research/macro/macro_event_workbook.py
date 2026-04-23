@@ -11,6 +11,7 @@ from typing import Any
 import pandas as pd
 
 from data.option_data_store import create_store
+from event_vol_analysis.macro_outcomes import query_event_type_tail_rate
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,10 @@ class MacroWorkbookConfig:
     metric_version: str = "v1"
     outcome_version: str = "v1"
     assumptions_version: str = "v1"
+    macro_event_type: str = "fomc"
+    tail_threshold_sd: float = 1.0
+    vix_quartile: int | None = None
+    macro_outcomes_dir: str = "data/macro_event_outcomes"
 
 
 def load_macro_event_dataset(config: MacroWorkbookConfig) -> dict[str, pd.DataFrame]:
@@ -127,8 +132,12 @@ def summarize_event_timing(events: pd.DataFrame) -> dict[str, Any]:
 
     return {
         "sample_size": int(len(events)),
-        "event_time_labels": sorted(events["event_time_label"].dropna().astype(str).unique().tolist()),
-        "proxy_symbols": sorted(events["proxy_symbol"].dropna().astype(str).unique().tolist()),
+        "event_time_labels": sorted(
+            events["event_time_label"].dropna().astype(str).unique().tolist()
+        ),
+        "proxy_symbols": sorted(
+            events["proxy_symbol"].dropna().astype(str).unique().tolist()
+        ),
         "events_with_precise_timestamp": int(events["event_ts_utc"].notna().sum()),
     }
 
@@ -166,8 +175,12 @@ def summarize_surface_pricing(metrics: pd.DataFrame) -> dict[str, Any]:
 
     return {
         "sample_size": int(len(metrics)),
-        "mean_implied_move_pct": float(metrics["implied_move_pct"].astype(float).mean()),
-        "mean_event_variance_ratio": float(metrics["event_variance_ratio"].astype(float).mean()),
+        "mean_implied_move_pct": float(
+            metrics["implied_move_pct"].astype(float).mean()
+        ),
+        "mean_event_variance_ratio": float(
+            metrics["event_variance_ratio"].astype(float).mean()
+        ),
         "mean_iv_ratio": float(metrics["iv_ratio"].astype(float).mean()),
     }
 
@@ -199,6 +212,12 @@ def build_workbook_summary(config: MacroWorkbookConfig) -> dict[str, Any]:
     """Build the full macro workbook summary payload."""
 
     dataset = load_macro_event_dataset(config)
+    tail_gate = query_event_type_tail_rate(
+        event_type=config.macro_event_type,
+        threshold_sd=config.tail_threshold_sd,
+        vix_quartile=config.vix_quartile,
+        data_dir=config.macro_outcomes_dir,
+    )
     return {
         "config": asdict(config),
         "coverage": {
@@ -211,6 +230,7 @@ def build_workbook_summary(config: MacroWorkbookConfig) -> dict[str, Any]:
         "realized_moves": summarize_realized_moves(dataset["outcomes"]),
         "surface_pricing": summarize_surface_pricing(dataset["metrics"]),
         "structure_outcomes": summarize_structure_outcomes(dataset["replays"]),
+        "tail_rate_gate": tail_gate,
         "limitations": [
             "This workbook is specific to one macro catalyst at a time.",
             "Results are only as complete as the registered macro sample and bound snapshots.",
@@ -231,6 +251,9 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"- event_name: `{summary['config']['event_name']}`",
         f"- proxy_symbol: `{summary['config']['proxy_symbol']}`",
         f"- horizon_code: `{summary['config']['horizon_code']}`",
+        f"- macro_event_type: `{summary['config']['macro_event_type']}`",
+        f"- tail_threshold_sd: `{summary['config']['tail_threshold_sd']}`",
+        f"- vix_quartile: `{summary['config']['vix_quartile']}`",
         "",
         "## Coverage",
         "",
@@ -273,6 +296,17 @@ def render_markdown(summary: dict[str, Any]) -> str:
     else:
         lines.append("- No replay outcomes available yet.")
 
+    lines.extend(["", "## Tail Rate Gate", ""])
+    lines.append(f"- event_type: {summary['tail_rate_gate']['event_type']}")
+    lines.append(f"- threshold_sd: {summary['tail_rate_gate']['threshold_sd']}")
+    lines.append(f"- vix_quartile: {summary['tail_rate_gate']['vix_quartile']}")
+    lines.append(f"- tail_event_count: {summary['tail_rate_gate']['tail_event_count']}")
+    lines.append(f"- total_events: {summary['tail_rate_gate']['total_events']}")
+    lines.append(f"- tail_rate: {summary['tail_rate_gate']['tail_rate']}")
+    lines.append(
+        f"- has_min_2_tail_events: {summary['tail_rate_gate']['has_min_2_tail_events']}"
+    )
+
     lines.extend(["", "## Limitations", ""])
     lines.extend(f"- {item}" for item in summary["limitations"])
     return "\n".join(lines) + "\n"
@@ -286,6 +320,13 @@ def main() -> None:
     parser.add_argument("--event-name", default="cpi")
     parser.add_argument("--proxy-symbol", default=None)
     parser.add_argument("--horizon", default="h1_close")
+    parser.add_argument("--macro-event-type", default="fomc")
+    parser.add_argument("--tail-threshold-sd", type=float, default=1.0)
+    parser.add_argument("--vix-quartile", type=int, default=None)
+    parser.add_argument(
+        "--macro-outcomes-dir",
+        default="data/macro_event_outcomes",
+    )
     parser.add_argument("--output-json", default=None)
     parser.add_argument("--output-md", default=None)
     args = parser.parse_args()
@@ -296,11 +337,17 @@ def main() -> None:
             event_name=args.event_name,
             proxy_symbol=args.proxy_symbol,
             horizon_code=args.horizon,
+            macro_event_type=args.macro_event_type,
+            tail_threshold_sd=args.tail_threshold_sd,
+            vix_quartile=args.vix_quartile,
+            macro_outcomes_dir=args.macro_outcomes_dir,
         )
     )
 
     if args.output_json:
-        Path(args.output_json).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        Path(args.output_json).write_text(
+            json.dumps(summary, indent=2), encoding="utf-8"
+        )
     if args.output_md:
         Path(args.output_md).write_text(render_markdown(summary), encoding="utf-8")
 

@@ -68,6 +68,27 @@ Expected outcome:
 
 - JSON summary prints coverage, realized move stats, IV crush, and replay stats.
 
+Optional macro binary outcomes quick path:
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  scripts/update_macro_event_outcome.py add \
+  --event-type geopolitical \
+  --event-date 2026-04-10 \
+  --underlying SPY \
+  --implied-move 0.02 \
+  --realized-move 0.03 \
+  --vix 28.0 \
+  --vvix-percentile 75 \
+  --gex-zone "Strong Amplified" \
+  --vol-crush -0.06
+
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  scripts/update_macro_event_outcome.py query \
+  --event-type geopolitical \
+  --threshold 1.0
+```
+
 ## Where To Go Next
 
 - Full operator guide: `docs/USER_GUIDE.md`

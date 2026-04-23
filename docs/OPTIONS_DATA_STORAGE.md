@@ -16,6 +16,36 @@ SQLite-based storage solution for low-frequency intraday options data collection
 
 **Schema:**
 ```
+
+Additional file-backed store used by macro binary workflows:
+
+```
+data/macro_event_outcomes/
+└── <event_type>_<event_date>_<underlying>.json
+```
+
+Each macro-event outcome JSON stores:
+
+- `event_type` (`geopolitical`, `fomc`, `election`, `regulatory`)
+- `event_date`, `underlying`
+- `implied_move_pct`, `realized_move_pct`, `move_vs_implied_ratio`
+- `vix_at_entry`, `vvix_percentile_at_entry`, optional `vix_quartile`
+- `gex_zone`, `vol_crush`, optional operator `notes`
+
+Tail-rate query helper:
+
+- `query_event_type_tail_rate(event_type, threshold_sd=1.0, vix_quartile=None)`
+- Returns count of records where `move_vs_implied_ratio > threshold_sd`, total
+  records, tail rate, and `has_min_2_tail_events`
+
+Macro-conditioned edge helper:
+
+- `compute_macro_conditioned_edge_ratio(...)` in
+  `event_vol_analysis/analytics/edge_ratio.py`
+- Uses event-type tail-rate evidence (and optional VIX quartile) to adjust the
+  denominator when historical evidence is sufficient
+- Falls back to unconditioned edge ratio with explicit LOW-confidence note when
+  history is insufficient
 option_quotes table
 ├── Primary data: timestamp, ticker, expiry, strike, option_type
 ├── Pricing: bid, ask, mid (computed), spread (computed)

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from event_vol_analysis.analytics.edge_ratio import compute_edge_ratio
+from event_vol_analysis.analytics.edge_ratio import (
+    compute_edge_ratio,
+    compute_macro_conditioned_edge_ratio,
+)
 from event_vol_analysis.analytics.historical import ConditionalExpected
 
 
@@ -117,3 +120,80 @@ def test_note_field_populated() -> None:
 def test_secondary_ratio_present() -> None:
     out = compute_edge_ratio(0.05, _conditional(primary=0.05, median=0.05))
     assert out.secondary_ratio == pytest.approx(1.0)
+
+
+def test_macro_conditioned_edge_ratio_uses_conditioning_when_tail_history_present(
+    tmp_path,
+) -> None:
+    data_dir = tmp_path / "macro_event_outcomes"
+
+    from event_vol_analysis.macro_outcomes import store_macro_event_outcome
+
+    store_macro_event_outcome(
+        event_type="fomc",
+        event_date="2026-06-12",
+        underlying="SPY",
+        implied_move_pct=0.015,
+        realized_move_pct=0.024,
+        vix_at_entry=21.0,
+        vvix_percentile_at_entry=66.0,
+        gex_zone="Uncertain",
+        vol_crush=-0.04,
+        data_dir=data_dir,
+    )
+    store_macro_event_outcome(
+        event_type="fomc",
+        event_date="2026-07-29",
+        underlying="SPY",
+        implied_move_pct=0.014,
+        realized_move_pct=0.021,
+        vix_at_entry=19.0,
+        vvix_percentile_at_entry=62.0,
+        gex_zone="Neutral",
+        vol_crush=-0.03,
+        data_dir=data_dir,
+    )
+
+    conditioned = compute_macro_conditioned_edge_ratio(
+        implied=0.05,
+        conditional_expected=_conditional(primary=0.05),
+        event_type="fomc",
+        data_dir=str(data_dir),
+    )
+
+    assert conditioned.has_min_2_tail_events is True
+    assert conditioned.conditioned_ratio is not None
+    assert conditioned.conditioned_label is not None
+    assert conditioned.denominator_source == "macro_tail_conditioned"
+
+
+def test_macro_conditioned_edge_ratio_falls_back_when_tail_history_insufficient(
+    tmp_path,
+) -> None:
+    data_dir = tmp_path / "macro_event_outcomes"
+
+    from event_vol_analysis.macro_outcomes import store_macro_event_outcome
+
+    store_macro_event_outcome(
+        event_type="regulatory",
+        event_date="2026-09-01",
+        underlying="XLE",
+        implied_move_pct=0.02,
+        realized_move_pct=0.018,
+        vix_at_entry=20.0,
+        vvix_percentile_at_entry=61.0,
+        gex_zone="Neutral",
+        vol_crush=-0.02,
+        data_dir=data_dir,
+    )
+
+    conditioned = compute_macro_conditioned_edge_ratio(
+        implied=0.05,
+        conditional_expected=_conditional(primary=0.05),
+        event_type="regulatory",
+        data_dir=str(data_dir),
+    )
+
+    assert conditioned.has_min_2_tail_events is False
+    assert conditioned.conditioned_ratio is None
+    assert conditioned.denominator_source == "unconditioned"

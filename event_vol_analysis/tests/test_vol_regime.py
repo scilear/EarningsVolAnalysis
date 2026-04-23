@@ -95,6 +95,12 @@ def test_classify_regime_surfaces_dual_fields() -> None:
         "back_iv": 0.45,
         "gex_net": -1.0,
         "gex_abs": 1.0,
+        "vanna_net": 125000.0,
+        "charm_net": -840.0,
+        "pin_strikes": [
+            {"strike": 100.0, "gex": 1.5e6, "abs_pct": 0.32},
+        ],
+        "gex_by_strike": [(95.0, -2.0e5), (100.0, 1.5e6), (105.0, 1.0e5)],
         "rr25_raw": -0.05,
         "atm_iv_history": [
             0.25,
@@ -171,3 +177,13 @@ def test_classify_regime_surfaces_dual_fields() -> None:
     assert "term_structure_slope" in regime
     assert "skew_25d" in regime
     assert regime["skew_25d"] == 0.05
+    assert regime["vanna_net"] == pytest.approx(125000.0)
+    assert regime["charm_net"] == pytest.approx(-840.0)
+    assert len(regime["pin_strikes"]) == 1
+    assert regime["gex_by_strike_top"][0][0] == pytest.approx(100.0)
+    assert regime["macro_vehicle_class"] in {
+        "macro_etf",
+        "vol_index_proxy",
+        "other",
+        "unknown",
+    }

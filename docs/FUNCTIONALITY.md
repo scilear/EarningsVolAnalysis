@@ -13,6 +13,10 @@ trade idea review.
 - Single-ticker report generation (live or synthetic test mode)
 - Multi-ticker batch mode with per-name report output
 - Regime classification (vol pricing, event structure, term structure, gamma)
+- Extended microstructure diagnostics: strike-level GEX, pin-strike detection,
+  net vanna, and net charm
+- Macro vehicle support classification in regime output (SPY/XOP/XLE validated,
+  VIX-family flagged with forward-model caveat)
 - Strategy construction, Monte Carlo EV/CVaR/convexity scoring, ranking
 - Generic playbook payload emission through the bridge layer
 
@@ -143,11 +147,16 @@ across samples.
 - Auto-ingest upcoming earnings dates from yfinance
 - Event replay context loading and replay summary helpers
 - Earnings workbook and macro workbook summaries from stored data
+- Macro binary-event outcomes store with tail-rate query helper for
+  event-type activation checks
+- Macro-conditioned edge-ratio helper for event-type + VIX quartile
+  denominator conditioning with explicit fallback metadata
 - QuantConnect scaffold export (JSON payload, LEAN stub, research template)
 
 ### Primary Entry Points
 
 - `python scripts/backfill_event_history.py`
+- `python scripts/update_macro_event_outcome.py`
 - `python research/earnings/earnings_event_workbook.py`
 - `python research/macro/macro_event_workbook.py`
 - `python research/quantconnect/quantconnect_replay_scaffold.py`
@@ -189,7 +198,30 @@ Macro workbook:
   research/macro/macro_event_workbook.py \
   --db data/options_intraday.db \
   --event-name cpi \
-  --proxy-symbol TLT
+  --proxy-symbol TLT \
+  --macro-event-type fomc \
+  --tail-threshold-sd 1.0
+```
+
+Macro binary outcomes (store/query):
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  scripts/update_macro_event_outcome.py add \
+  --event-type geopolitical \
+  --event-date 2026-04-10 \
+  --underlying SPY \
+  --implied-move 0.02 \
+  --realized-move 0.03 \
+  --vix 28.0 \
+  --vvix-percentile 75 \
+  --gex-zone "Strong Amplified" \
+  --vol-crush -0.06
+
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  scripts/update_macro_event_outcome.py query \
+  --event-type geopolitical \
+  --threshold 1.0
 ```
 
 QuantConnect scaffold:

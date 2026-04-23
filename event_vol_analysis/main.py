@@ -1467,6 +1467,15 @@ def main() -> None:
         "gamma_flip": gex.get("gamma_flip"),
         "flip_distance_pct": gex.get("flip_distance_pct"),
         "top_gamma_strikes": gex.get("top_gamma_strikes", []),
+        "gex_by_strike_top": sorted(
+            gex.get("gex_by_strike", []),
+            key=lambda row: abs(float(row[1])),
+            reverse=True,
+        )[:15],
+        "gex_by_strike": gex.get("gex_by_strike", []),
+        "pin_strikes": gex.get("pin_strikes", []),
+        "vanna_net": gex.get("vanna_net", 0.0),
+        "charm_net": gex.get("charm_net", 0.0),
         "gex_dealer_note": (
             "GEX sign assumes dealers are net short "
             "options. Interpret regime direction "
@@ -1979,8 +1988,18 @@ def _print_console_snapshot(
     print(f"Slippage sensitivity (EV delta): {ev_2x - ev_base:.2f}")
     print(f"GEX net:  {gex['net_gex']:.2f}")
     print(f"GEX abs:  {gex['abs_gex']:.2f}")
+    if gex.get("vanna_net") is not None:
+        print(f"Vanna net: {gex['vanna_net']:.2f}")
+    if gex.get("charm_net") is not None:
+        print(f"Charm net: {gex['charm_net']:.2f}")
     if gex.get("gamma_flip"):
         print(f"Gamma Flip: {gex['gamma_flip']:.2f}")
+    if gex.get("pin_strikes"):
+        pins = gex["pin_strikes"]
+        pin_labels = ", ".join(
+            f"{row['strike']:.2f} ({row['abs_pct'] * 100:.1f}%)" for row in pins[:3]
+        )
+        print(f"Pin strikes: {pin_labels}")
     print("=" * 60)
 
 
