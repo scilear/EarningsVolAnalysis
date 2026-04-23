@@ -17,8 +17,15 @@
 # Log rotation (keep 7 days)
 0 0 * * * find /home/fabien/Documents/EarningsVolAnalysis/logs -name "*.log" -mtime +7 -delete
 
-# Daily earnings scan (08:00 CET = 02:00 ET during standard time)
-0 2 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && .venv/bin/python -m event_vol_analysis.workflow.daily_scan >> logs/daily_scan.log 2>&1
+# T044 three-step workflow (EOD cache → overnight analysis → open confirmation)
+# Step 1: EOD cache refresh at 22:30 CET (4:30 PM ET) — captures closing chains
+30 22 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && ./scripts/run_eod_refresh.sh >> logs/eod_refresh.log 2>&1
+
+# Step 2: Overnight analysis at 08:00 CET (2 AM ET) — uses cached EOD data
+0 8 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && ./scripts/run_overnight_scan.sh >> logs/overnight_scan.log 2>&1
+
+# Step 3: Open confirmation at 15:45 CET (9:45 AM ET) — live vs cached comparison
+45 15 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && ./scripts/run_open_confirmation.sh >> logs/open_confirmation.log 2>&1
 
 # Pre-market same-day earnings scan (08:45 CET = 03:45 ET)
 45 3 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && ./scripts/run_pre_market_scan.sh >> logs/pre_market_scan.log 2>&1

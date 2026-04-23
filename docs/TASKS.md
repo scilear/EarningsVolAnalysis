@@ -47,7 +47,7 @@
 | T039 | Structure library + payoff-type mapping | P2 | T022 | completed |
 | T040 | Structure Advisor core (structure_advisor.py) | P2 | T039 | completed |
 | T041 | CLI integration + agent skill update | P2 | T040 | completed |
-| T044 | EOD cache refresh + overnight analysis mode | P1 | T032 | pending |
+| T044 | EOD cache refresh + overnight analysis mode | P1 | T032 | completed |
 | T043 | Pre-market same-day earnings window | P1 | T032 | completed |
 
 ## Dependency Chains
@@ -104,7 +104,7 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T040 | tasks/task_040.md | completed |
 | T041 | tasks/task_041.md | completed |
 | T043 | tasks/task_043.md | completed |
-| T044 | tasks/task_044.md | pending |
+| T044 | tasks/task_044.md | completed |
 
 ## Cross-Repo Ownership Notes
 

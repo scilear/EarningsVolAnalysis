@@ -6,6 +6,7 @@ with automatic table creation and efficient querying.
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from contextlib import contextmanager
@@ -72,6 +73,24 @@ CREATE TABLE IF NOT EXISTS download_log (
 
 CREATE INDEX IF NOT EXISTS idx_download_log_ticker
     ON download_log(ticker, timestamp);
+
+CREATE TABLE IF NOT EXISTS option_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME NOT NULL,
+    ticker TEXT NOT NULL,
+    quality_tag TEXT NOT NULL DEFAULT 'unknown'
+        CHECK(quality_tag IN ('valid', 'partial', 'stale', 'zero', 'unknown')),
+    records_total INTEGER NOT NULL DEFAULT 0,
+    records_valid INTEGER NOT NULL DEFAULT 0,
+    records_invalid INTEGER NOT NULL DEFAULT 0,
+    expiry_set TEXT,
+    spot_price REAL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(timestamp, ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_option_snapshots_lookup
+    ON option_snapshots(ticker, timestamp);
 
 CREATE TABLE IF NOT EXISTS event_registry (
     event_id TEXT PRIMARY KEY,
@@ -845,6 +864,132 @@ class OptionsDataStore:
                 "SELECT DISTINCT ticker FROM option_quotes ORDER BY ticker"
             )
             return [row[0] for row in cursor.fetchall()]
+
+    def query_eod_snapshot(
+        self,
+        ticker: str,
+        date_: date | datetime | str | None = None,
+        min_quality: str = "valid",
+    ) -> dict[str, Any] | None:
+        """Return the most recent snapshot metadata for ticker/date.
+
+        Args:
+            ticker: Stock ticker symbol
+            date_: Limit to snapshots on or before this date (None = latest)
+            min_quality: Minimum quality tag ('valid', 'partial', 'zero', 'all')
+
+        Returns:
+            Snapshot dict or None if none found
+        """
+        query = "SELECT * FROM option_snapshots WHERE ticker = ?"
+        params: list[Any] = [ticker.upper()]
+
+        if date_ is not None:
+            cutoff = _serialize_date(_normalize_date(date_))
+            query += " AND date(timestamp) <= ?"
+            params.append(cutoff)
+
+        quality_map = {"valid": 0, "partial": 1, "stale": 2, "zero": 3, "unknown": 4}
+        if min_quality in quality_map:
+            placeholders = ",".join(
+                f"'{q}'"
+                for q in list(quality_map.keys())[: quality_map[min_quality] + 1]
+            )
+            query += f" AND quality_tag IN ({placeholders})"
+
+        query += " ORDER BY timestamp DESC LIMIT 1"
+
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+
+        if not rows:
+            return None
+        row = dict(rows[0])
+        if "timestamp" in row and row["timestamp"]:
+            row["timestamp"] = datetime.fromisoformat(row["timestamp"])
+        return row
+
+    def validate_cache_coverage(
+        self,
+        tickers: list[str],
+        date_: date | datetime | str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return per-ticker cache coverage summary.
+
+        Args:
+            tickers: Tickers to check
+            date_: Target date for cache coverage (None = latest)
+
+        Returns:
+            List of dicts with ticker, has_cache, quality_tag, snapshot_ts
+        """
+        results = []
+        for ticker in tickers:
+            snapshot = self.query_eod_snapshot(ticker.upper(), date_)
+            results.append(
+                {
+                    "ticker": ticker.upper(),
+                    "has_cache": snapshot is not None,
+                    "quality_tag": snapshot.get("quality_tag") if snapshot else None,
+                    "snapshot_ts": snapshot.get("timestamp") if snapshot else None,
+                    "records_valid": snapshot.get("records_valid") if snapshot else 0,
+                }
+            )
+        return results
+
+    def store_eod_snapshot(
+        self,
+        ticker: str,
+        timestamp: datetime,
+        quality_tag: str,
+        records_total: int,
+        records_valid: int,
+        records_invalid: int,
+        expiry_set: list[str] | None = None,
+        spot_price: float | None = None,
+    ) -> None:
+        """Store one EOD snapshot metadata record.
+
+        Args:
+            ticker: Stock ticker symbol
+            timestamp: When the data was captured
+            quality_tag: 'valid', 'partial', 'stale', 'zero', 'unknown'
+            records_total: Total strikes fetched
+            records_valid: Valid non-zero strikes
+            records_invalid: Zero/invalid strikes
+            expiry_set: List of expiry dates captured
+            spot_price: Underlying price at capture time
+        """
+        expiry_json = json.dumps(expiry_set) if expiry_set else None
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO option_snapshots (
+                    ticker, timestamp, quality_tag,
+                    records_total, records_valid, records_invalid,
+                    expiry_set, spot_price
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(timestamp, ticker) DO UPDATE SET
+                    quality_tag = excluded.quality_tag,
+                    records_total = excluded.records_total,
+                    records_valid = excluded.records_valid,
+                    records_invalid = excluded.records_invalid,
+                    expiry_set = excluded.expiry_set,
+                    spot_price = excluded.spot_price
+                """,
+                (
+                    ticker.upper(),
+                    _serialize_datetime(timestamp),
+                    quality_tag,
+                    records_total,
+                    records_valid,
+                    records_invalid,
+                    expiry_json,
+                    spot_price,
+                ),
+            )
+            conn.commit()
 
     def get_expiry_dates(self, ticker: str, since: datetime | None = None) -> list[str]:
         """Get available expiry dates for a ticker.

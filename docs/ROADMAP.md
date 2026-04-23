@@ -416,6 +416,10 @@ automated cron workflow for morning earnings reviews.
 
 ## T044 — EOD Cache Refresh + Overnight Analysis Mode [P1]
 
+Status: completed
+
+Ownership note: fully in-repo (EarningsVolAnalysis).
+
 **Objective:** Fix the structural gap in T032/T043 where the morning cron runs at 2 AM ET (market closed) with no valid option data. Add an end-of-day (EOD) cache refresh step that captures closing chains, enabling valid overnight analysis against last-close prices.
 
 **Context:**

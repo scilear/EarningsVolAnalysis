@@ -72,6 +72,44 @@ Pre-market same-day scan:
   --date 2026-05-01
 ```
 
+EOD cache refresh (captures closing chains for overnight analysis):
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --mode eod-refresh \
+  --date 2026-05-01
+```
+
+Overnight analysis (uses cached EOD data, requires --use-cache):
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --mode overnight \
+  --use-cache \
+  --date 2026-05-01
+```
+
+Open confirmation (live vs cached comparison):
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --mode open-confirmation \
+  --refresh-cache \
+  --date 2026-05-01
+```
+
+Validate cache coverage:
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --validate-cache \
+  --date 2026-05-01
+```
+
 ### Inputs
 
 - Ticker(s), optional event date, option chain data (live or cached), config
