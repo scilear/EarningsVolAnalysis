@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import subprocess
 
@@ -60,6 +61,7 @@ def test_ranking_cheaper_first() -> None:
         net_debit=100.0,
         annualized_carry_pct=9.0,
         max_loss=100.0,
+        notional_estimate=10000.0,
         breakeven=None,
         loss_zone=None,
         rank=0,
@@ -69,6 +71,7 @@ def test_ranking_cheaper_first() -> None:
         net_debit=200.0,
         annualized_carry_pct=14.0,
         max_loss=200.0,
+        notional_estimate=10000.0,
         breakeven=None,
         loss_zone=None,
         rank=0,
@@ -88,6 +91,7 @@ def test_to_table_line_count_under_60() -> None:
                 net_debit=100.0 + i,
                 annualized_carry_pct=10.0 + i,
                 max_loss=100.0 + i,
+                notional_estimate=10000.0,
                 breakeven=95.0,
                 loss_zone=None,
                 rank=i,
@@ -332,6 +336,85 @@ def test_cli_query_budget_flag_passed_to_advisor(monkeypatch) -> None:
     assert captured["budget"] == 500.0
 
 
+def test_cli_query_max_notional_flag_passed_to_advisor(monkeypatch) -> None:
+    captured: dict = {}
+
+    def _fake_query(**kwargs):
+        captured.update(kwargs)
+        return StructureAdvisorResult(
+            payoff_type="crash",
+            ticker="GLD",
+            expiry="2030-05-17",
+            spot=100.0,
+        )
+
+    monkeypatch.setattr(main_module, "query_structures", _fake_query)
+    exit_code = main_module._run_query_cli(
+        [
+            "--payoff",
+            "crash",
+            "--ticker",
+            "GLD",
+            "--expiry",
+            "2030-05-17",
+            "--spot",
+            "100.0",
+            "--max-notional",
+            "25000",
+        ]
+    )
+    assert exit_code == 0
+    assert captured["max_notional"] == 25000.0
+
+
+def test_query_structures_excludes_above_notional_limit(monkeypatch) -> None:
+    _patch_chain_fetch(monkeypatch)
+    result = query_structures(
+        payoff_type=PayoffType.CRASH,
+        ticker="GLD",
+        expiry="2030-05-17",
+        spot=100.0,
+        max_notional=15000.0,
+        context={"iv_percentile": 50.0, "dte": 23},
+    )
+    assert any(item.reason == "NOTIONAL_LIMIT" for item in result.excluded)
+
+
+def test_assignment_warning_low_moneyness_for_atm_short(monkeypatch) -> None:
+    _patch_chain_fetch(monkeypatch)
+    near_expiry = (_date_today_plus(2)).isoformat()
+    result = query_structures(
+        payoff_type=PayoffType.SIDEWAYS,
+        ticker="GLD",
+        expiry=near_expiry,
+        spot=100.0,
+        context={"iv_percentile": 50.0, "dte": 2},
+    )
+    warnings = [
+        item.assignment_warning
+        for item in result.ranked_structures
+        if item.assignment_warning is not None
+    ]
+    assert warnings
+    assert any("MEDIUM" in warning for warning in warnings)
+
+
+def test_assignment_warning_present_for_near_itm_short_leg(monkeypatch) -> None:
+    _patch_chain_fetch(monkeypatch)
+    near_expiry = (_date_today_plus(3)).isoformat()
+    result = query_structures(
+        payoff_type=PayoffType.SIDEWAYS,
+        ticker="GLD",
+        expiry=near_expiry,
+        spot=100.0,
+        context={"iv_percentile": 50.0, "dte": 3},
+    )
+    has_warning = any(
+        item.assignment_warning is not None for item in result.ranked_structures
+    )
+    assert has_warning
+
+
 def test_cli_query_chain_unavailable_exits_1(monkeypatch, capsys) -> None:
     def _fake_query(**kwargs):
         return StructureAdvisorResult(
@@ -447,3 +530,7 @@ def _date(value: str):
 
 def _ts(value: str):
     return pytest.importorskip("pandas").Timestamp(value)
+
+
+def _date_today_plus(days: int):
+    return dt.date.today() + dt.timedelta(days=days)

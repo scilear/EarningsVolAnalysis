@@ -67,6 +67,40 @@ def test_charter_flag_on_covered_call() -> None:
     assert covered_call.requires_existing_long is True
 
 
+def test_charter_flag_on_call_ratio_spread() -> None:
+    structures = get_structures_for_payoff(
+        PayoffType.DIRECTIONAL_CONVEX,
+        expiry=dt.date(2030, 5, 17),
+        back_expiry=dt.date(2030, 6, 21),
+        spot=100.0,
+    )
+    ratio_spread = next(
+        item for item in structures if item.name == "call_ratio_spread_102_107"
+    )
+    assert ratio_spread.requires_naked_short_approval is True
+
+
+def test_charter_flag_on_jade_lizard() -> None:
+    structures = get_structures_for_payoff(
+        PayoffType.SIDEWAYS,
+        expiry=dt.date(2030, 5, 17),
+        back_expiry=dt.date(2030, 6, 21),
+        spot=100.0,
+    )
+    jade = next(item for item in structures if item.name == "jade_lizard_96_90_106")
+    assert jade.requires_naked_short_approval is True
+
+
+def test_broken_wing_has_expected_name() -> None:
+    strategy = build_structure_by_key(
+        "broken_wing_call_butterfly_98_100_106",
+        spot=100.0,
+        expiry=dt.date(2030, 5, 17),
+        back_expiry=dt.date(2030, 6, 21),
+    )
+    assert strategy.name == "broken_wing_call_butterfly_98_100_106"
+
+
 def test_diagonal_spread_payoff_at_expiry_long_leg() -> None:
     strategy = build_structure_by_key(
         "diagonal_put_backspread_96_93",

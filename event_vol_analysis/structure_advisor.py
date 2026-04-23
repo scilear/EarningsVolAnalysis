@@ -34,10 +34,12 @@ class ScoredStructure:
     net_debit: float
     annualized_carry_pct: float
     max_loss: float
+    notional_estimate: float
     breakeven: float | None
     loss_zone: tuple[float, float] | None
     rank: int
     note: str | None = None
+    assignment_warning: str | None = None
     manually_specified: bool = False
 
 
@@ -79,8 +81,8 @@ class StructureAdvisorResult:
         lines.append("RANKED CANDIDATES")
         lines.append("-" * 84)
         lines.append(
-            "Rank  Structure                    Net debit   Annlzd   "
-            "Max loss   Breakeven   Loss zone"
+            "Rank  Structure                 Net debit   Annlzd   "
+            "Notional   Max loss   Breakeven   Loss zone"
         )
 
         for row in self.ranked_structures:
@@ -92,12 +94,15 @@ class StructureAdvisorResult:
                 loss_zone = f"{low:.2f}-{high:.2f}"
             label = " [MANUALLY_SPECIFIED]" if row.manually_specified else ""
             lines.append(
-                f"{row.rank:<5} {row.structure_name[:27]:<27} "
+                f"{row.rank:<5} {row.structure_name[:24]:<24} "
                 f"${row.net_debit:>8.2f} {row.annualized_carry_pct:>8.2f}% "
-                f"${row.max_loss:>8.2f} {breakeven:>10} {loss_zone:>12}{label}"
+                f"${row.notional_estimate:>8.0f} ${row.max_loss:>8.2f} "
+                f"{breakeven:>10} {loss_zone:>12}{label}"
             )
             if row.note:
                 lines.append(f"      note: {row.note}")
+            if row.assignment_warning:
+                lines.append(f"      assignment: {row.assignment_warning}")
 
         if not self.ranked_structures:
             lines.append("(no ranked structures)")
@@ -133,6 +138,7 @@ def query_structures(
     expiry: str,
     spot: float,
     budget: float | None = None,
+    max_notional: float | None = None,
     context: dict | None = None,
     validate: str | None = None,
 ) -> StructureAdvisorResult:
@@ -188,10 +194,19 @@ def query_structures(
             continue
 
         net_debit = _compute_net_debit(leg_prices)
+        notional_estimate = _estimate_notional(structure, float(spot))
         if budget is not None and net_debit > budget:
             result.excluded.append(
                 ExcludedStructure(
                     structure_name=structure.name, reason="BUDGET_EXCEEDED"
+                )
+            )
+            continue
+        if max_notional is not None and notional_estimate > max_notional:
+            result.excluded.append(
+                ExcludedStructure(
+                    structure_name=structure.name,
+                    reason="NOTIONAL_LIMIT",
                 )
             )
             continue
@@ -209,6 +224,7 @@ def query_structures(
         note = structure.notes
         if "diagonal" in structure.name:
             note = _diagonal_cost_note(structure, net_debit, float(spot))
+        assignment_warning = _assignment_warning(structure, float(spot))
 
         scored.append(
             ScoredStructure(
@@ -216,10 +232,12 @@ def query_structures(
                 net_debit=net_debit,
                 annualized_carry_pct=annualized,
                 max_loss=max_loss,
+                notional_estimate=notional_estimate,
                 breakeven=breakeven,
                 loss_zone=loss_zone,
                 rank=0,
                 note=note,
+                assignment_warning=assignment_warning,
                 manually_specified=structure.name.endswith("manual"),
             )
         )
@@ -368,6 +386,44 @@ def _compute_net_debit(leg_prices: list[tuple[str, float, int]]) -> float:
         else:
             total -= cash
     return total
+
+
+def _estimate_notional(structure: Strategy, spot: float) -> float:
+    """Estimate gross notional exposure in dollars."""
+    gross_contracts = float(sum(abs(int(leg.qty)) for leg in structure.legs))
+    return gross_contracts * spot * 100.0
+
+
+def _assignment_warning(structure: Strategy, spot: float) -> str | None:
+    """Return assignment-risk note for near-expiry ITM short legs."""
+    short_legs = [leg for leg in structure.legs if leg.side == "sell"]
+    if not short_legs:
+        return None
+
+    nearest_short_expiry = min(leg.expiry.date() for leg in short_legs)
+    dte = max((nearest_short_expiry - dt.date.today()).days, 0)
+    if dte > 7:
+        return None
+
+    warnings: list[str] = []
+    for leg in short_legs:
+        if leg.option_type == "call":
+            itm = spot >= float(leg.strike)
+        else:
+            itm = spot <= float(leg.strike)
+        if not itm:
+            continue
+
+        moneyness = abs(spot - float(leg.strike)) / max(spot, 1e-9)
+        severity = "HIGH" if moneyness >= 0.01 else "MEDIUM"
+        warnings.append(
+            f"{severity} assignment risk on short {leg.option_type} "
+            f"{leg.strike:.2f} ({dte} DTE)"
+        )
+
+    if not warnings:
+        return None
+    return "; ".join(warnings)
 
 
 def _annualized_carry(net_debit: float, spot: float, dte: int) -> float:

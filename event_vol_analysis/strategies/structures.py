@@ -477,3 +477,83 @@ def make_risk_reversal(
         name=f"risk_reversal_{normalized_direction}",
         legs=legs,
     )
+
+
+def make_broken_wing_call_butterfly(
+    expiry: dt.date | pd.Timestamp,
+    lower_strike: float,
+    short_strike: float,
+    upper_strike: float,
+) -> Strategy:
+    """Create a broken-wing call butterfly (1x2x1)."""
+    low = float(lower_strike)
+    mid = float(short_strike)
+    high = float(upper_strike)
+    if not (low < mid < high):
+        raise ValueError("Require lower_strike < short_strike < upper_strike")
+    if abs((mid - low) - (high - mid)) < 1e-9:
+        raise ValueError("Use symmetric_butterfly for equal wings")
+
+    expiry_ts = pd.Timestamp(expiry)
+    return Strategy(
+        name="broken_wing_call_butterfly",
+        legs=(
+            OptionLeg("call", low, 1, "buy", expiry_ts),
+            OptionLeg("call", mid, 2, "sell", expiry_ts),
+            OptionLeg("call", high, 1, "buy", expiry_ts),
+        ),
+    )
+
+
+def make_call_ratio_spread(
+    expiry: dt.date | pd.Timestamp,
+    long_strike: float,
+    short_strike: float,
+    ratio: int = 2,
+) -> Strategy:
+    """Create a 1xN call ratio spread (charter-blocked if N > 1)."""
+    if ratio < 1:
+        raise ValueError("ratio must be >= 1")
+    low = float(long_strike)
+    high = float(short_strike)
+    if low >= high:
+        raise ValueError("Require long_strike < short_strike")
+
+    expiry_ts = pd.Timestamp(expiry)
+    return Strategy(
+        name="call_ratio_spread",
+        legs=(
+            OptionLeg("call", low, 1, "buy", expiry_ts),
+            OptionLeg("call", high, int(ratio), "sell", expiry_ts),
+        ),
+        requires_naked_short_approval=ratio > 1,
+        notes="One uncovered short call for ratio > 1.",
+    )
+
+
+def make_jade_lizard(
+    expiry: dt.date | pd.Timestamp,
+    short_put_strike: float,
+    long_put_strike: float,
+    short_call_strike: float,
+) -> Strategy:
+    """Create a jade lizard (short put spread + short call)."""
+    short_put = float(short_put_strike)
+    long_put = float(long_put_strike)
+    short_call = float(short_call_strike)
+    if long_put >= short_put:
+        raise ValueError("Require long_put_strike < short_put_strike")
+    if short_call <= short_put:
+        raise ValueError("Require short_call_strike > short_put_strike")
+
+    expiry_ts = pd.Timestamp(expiry)
+    return Strategy(
+        name="jade_lizard",
+        legs=(
+            OptionLeg("put", short_put, 1, "sell", expiry_ts),
+            OptionLeg("put", long_put, 1, "buy", expiry_ts),
+            OptionLeg("call", short_call, 1, "sell", expiry_ts),
+        ),
+        requires_naked_short_approval=True,
+        notes="Contains a naked short call leg; charter approval required.",
+    )

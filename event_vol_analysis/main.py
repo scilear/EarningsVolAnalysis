@@ -205,6 +205,12 @@ def _run_query_cli(argv: list[str]) -> int:
         help="Optional max net debit budget",
     )
     parser.add_argument(
+        "--max-notional",
+        type=float,
+        default=None,
+        help="Optional max estimated notional in dollars",
+    )
+    parser.add_argument(
         "--iv-percentile",
         type=float,
         default=None,
@@ -252,6 +258,7 @@ def _run_query_cli(argv: list[str]) -> int:
             expiry=args.expiry,
             spot=float(args.spot),
             budget=args.budget,
+            max_notional=args.max_notional,
             context=context,
             validate=args.validate,
         )
