@@ -414,7 +414,90 @@ automated cron workflow for morning earnings reviews.
 
 ---
 
+## T044 — EOD Cache Refresh + Overnight Analysis Mode [P1]
+
+**Objective:** Fix the structural gap in T032/T043 where the morning cron runs at 2 AM ET (market closed) with no valid option data. Add an end-of-day (EOD) cache refresh step that captures closing chains, enabling valid overnight analysis against last-close prices.
+
+**Context:**
+
+Current T032 flow has a fundamental flaw:
+```
+08:00 CET (2 AM ET) → fetch live data → market closed → bid/ask = 0 → all filtered → no output
+```
+
+Correct three-step flow:
+```
+22:30 CET (4:30 PM ET) → EOD cache refresh → store closing chains
+08:00 CET (2 AM ET)    → overnight analysis → --use-cache against EOD snapshot → screening + TYPE
+15:45 CET (9:45 AM ET) → live confirmation → --refresh-cache → confirm entry criteria
+```
+
+**Deliverable:**
+
+1. **New scan mode `--mode eod-refresh`** in `daily_scan.py`:
+   - Fetch option chains for universe using yfinance (within 30 min of 4 PM ET close, prices valid)
+   - Store in `options_intraday.db` with timestamp and quality tag
+   - Do NOT run 4-layer snapshot or TYPE classification (data capture only)
+   - Log: `logs/eod_refresh.log`
+
+2. **Update overnight mode `--mode overnight`** (replaces current T032 default):
+   - Explicitly requires `--use-cache` (fail loudly if no valid cache available)
+   - Reads from `options_intraday.db` filtered to most recent "valid" (non-zero) snapshot per ticker/expiry
+   - Runs full 4-layer snapshot + TYPE classification on cached chains
+   - Sends `telegram-send` alerts for non-TYPE-5 names
+
+3. **New confirmation mode `--mode open-confirmation`**:
+   - Runs at 9:45 AM ET (15 min after open) with `--refresh-cache`
+   - Compares live vol to overnight snapshot: surface shift, IV crush / expansion
+   - Flags if conditions changed materially vs. overnight TYPE classification
+   - Output: diff summary (NOT re-classification; operator reviews change and decides)
+
+4. **Cron schedule update:**
+   ```cron
+   # EOD cache refresh: 22:30 CET (4:30 PM ET)
+   30 22 * * 1-5 /path/to/run_eod_refresh.sh
+
+   # Overnight analysis: 00:30 CET (6:30 PM ET prior day, gives EOD time to finish)
+   30 0 * * 2-6 /path/to/run_overnight_scan.sh
+
+   # Open confirmation: 15:45 CET (9:45 AM ET)
+   45 15 * * 1-5 /path/to/run_open_confirmation.sh
+   ```
+
+5. **Cache validation helper:** `daily_scan --validate-cache --date YYYY-MM-DD`
+   - Reports: which tickers have valid EOD snapshot for that date
+   - Reports: which tickers are missing (will need live fetch or test-data fallback)
+   - Operator can see coverage before overnight analysis runs
+
+**Acceptance criteria:**
+
+- ✅ EOD refresh (22:30 CET) fetches non-zero bid/ask for full universe
+- ✅ Overnight analysis (00:30 CET) uses cached data without hitting yfinance
+- ✅ Overnight analysis outputs TYPE classification for all names with valid cache
+- ✅ Open confirmation detects material vol surface changes (>10% shift in implied move)
+- ✅ Telegram alerts fire at overnight step (not EOD step)
+- ✅ `--validate-cache` shows per-ticker coverage summary
+- ✅ If no EOD cache for a ticker: overnight skips it and logs warning (no crash)
+
+**Dependencies:**
+- T032 (daily_scan.py infrastructure)
+- T043 (pre-market mode shares `--mode` flag pattern)
+- `telegram-send` CLI
+
+**Important design notes:**
+- EOD refresh and overnight analysis are separate cron entries (not one combined step) — this allows the EOD refresh to run incrementally if some tickers fail
+- `min_quality="valid"` filter in `_load_chain_from_database_cache` correctly excludes zero-bid/ask snapshots; overnight mode must use this filter
+- Open confirmation outputs a DIFF, not a new TYPE — avoids double-signaling; operator owns the re-classification decision
+- Covers T043 pre-market use case: pre-market scan should also use EOD cache (not live fetch), so T043 and T044 are designed together
+
+---
+
 ## T043 — Pre-Market Same-Day Earnings Window [P1]
+
+Status: in_progress
+
+Ownership note: this task is fully in-repo (EarningsVolAnalysis). Unlike T041,
+it has no cross-repo documentation dependency.
 
 **Objective:** Add pre-market (3:45 AM ET / 08:45 CET) scan for same-day earnings names, complementing T032's 10–14 day forward window. Enable early analysis of names printing at market open.
 
@@ -560,6 +643,10 @@ K-012 Tier B has a structural activation filter that requires a binary check: "h
 | T039 | Structure library + payoff-type mapping | structures.py diagonal/risk-reversal additions | completed |
 | T040 | `structure_advisor.py` core — query, price, gate, rank | T039 | completed |
 | T041 | CLI `earningsvol query` + agent skill integration | T040 | completed |
+
+Ownership note: the "agent skill integration" part of T041 is cross-repo
+documentation work in `InvestmentDeskAgents` (`agents/vol-specialist/persona.md`).
+This repository only owns the `earningsvol query` CLI and Structure Advisor code.
 
 **Exit criteria:**
 - `earningsvol query --payoff crash --ticker GLD --expiry 2026-05-15 --spot 429.57` returns a ranked comparison table in ≤60 lines
