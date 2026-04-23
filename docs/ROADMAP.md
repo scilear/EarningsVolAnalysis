@@ -414,6 +414,59 @@ automated cron workflow for morning earnings reviews.
 
 ---
 
+## T043 — Pre-Market Same-Day Earnings Window [P1]
+
+**Objective:** Add pre-market (3:45 AM ET / 08:45 CET) scan for same-day earnings names, complementing T032's 10–14 day forward window. Enable early analysis of names printing at market open.
+
+**Scope:** 
+- 7–10 companies typically report at earnings season open each trading day
+- T032 captures (tomorrow → 14 days ahead); T043 captures (today's open)
+- Pre-market scan runs at 08:45 CET (3:45 AM ET) before market opens at 09:30 ET
+
+**Deliverable:**
+
+1. New CLI mode: `daily_scan --mode pre-market --date <YYYY-MM-DD>`
+   - Pulls earnings calendar for exactly that date
+   - Applies same 4-layer snapshot + TYPE classification
+   - Uses `telegram-send` (CLI command, not Python library) for alert delivery
+   - Falls back to console log if `telegram-send` config unavailable
+
+2. Cron entry (new, separate from T032):
+   - Time: 08:45 CET (3:45 AM ET) on trading days
+   - Command: `./scripts/run_pre_market_scan.sh`
+   - Report saved to: `reports/pre-market/YYYY-MM-DD_pre_market_scan.html`
+
+3. Script: `scripts/run_pre_market_scan.sh`
+   - Wraps `daily_scan.py --mode pre-market --date $(date +%Y-%m-%d)`
+   - Calls `telegram-send` for each non-TYPE-5 name (if configured)
+   - Message format: `[PRE-MARKET EARNINGS SCAN] TICKER: TYPE X | IV Regime: [label] | Edge Ratio: [label]`
+   - Logs to: `logs/pre_market_scan.log`
+
+4. Integration point: `event_vol_analysis/workflow/daily_scan.py`
+   - Add `--mode` flag: `pre-market` (new) vs `full-window` (default = T032 behavior)
+   - When `--mode pre-market`, calendar query filters for exact date only (not >=date)
+   - Re-use all 4-layer snapshot + filtering logic from T032
+
+**Acceptance criteria:**
+
+- ✅ `daily_scan --mode pre-market --date 2026-04-24` outputs same 4-layer structure as full window
+- ✅ Cron entry installed and dry-run succeeds
+- ✅ `telegram-send` integration works (alerts fire when CLI available)
+- ✅ Console fallback activates when `telegram-send` unavailable (graceful degradation)
+- ✅ Reports save to `reports/pre-market/` with correct date in filename
+- ✅ No hard filtering changes (same liquidity gates as T032)
+
+**Dependencies:**
+- T032 (daily_scan.py infrastructure must exist)
+- `telegram-send` CLI tool (user-provided, not installed by script)
+
+**Non-blocking notes:**
+- Pre-market scan assumes valid options data available (unlikely true at 3:45 AM ET; use test-data mode for validation)
+- Operator can skip this scan if no market data available; T032 still captures the same names 14+ days forward
+- Daily reports will show same names in both pre-market and 10-14 day windows on days with same-day earnings
+
+---
+
 ## Macro Binary Event Extension [P2] — from K-012
 
 **Context:** K-012 binary event playbook (InvestmentDeskAgents) uses GEX regime from this tool for Tier B (opportunistic) entries. Five data gaps block full K-012 integration. These are backlog items, not blocking current earnings work.
@@ -496,7 +549,7 @@ K-012 Tier B has a structural activation filter that requires a binary check: "h
 
 ---
 
-## Structure Advisor — Generic Payoff Query Interface [P2]
+## Structure Advisor — Generic Payoff Query Interface [P2] [completed]
 
 **Context:** vol-specialist agent currently loads full option chains into context to price structures. This moves quantitative analysis into the tool and returns a compact comparison table to the agent.
 
@@ -504,9 +557,9 @@ K-012 Tier B has a structural activation filter that requires a binary check: "h
 
 | ID | Task | Depends on | Status |
 |----|------|------------|--------|
-| T039 | Structure library + payoff-type mapping | structures.py diagonal/risk-reversal additions | pending |
-| T040 | `structure_advisor.py` core — query, price, gate, rank | T039 | pending |
-| T041 | CLI `earningsvol query` + agent skill integration | T040 | pending |
+| T039 | Structure library + payoff-type mapping | structures.py diagonal/risk-reversal additions | completed |
+| T040 | `structure_advisor.py` core — query, price, gate, rank | T039 | completed |
+| T041 | CLI `earningsvol query` + agent skill integration | T040 | completed |
 
 **Exit criteria:**
 - `earningsvol query --payoff crash --ticker GLD --expiry 2026-05-15 --spot 429.57` returns a ranked comparison table in ≤60 lines

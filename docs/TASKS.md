@@ -44,9 +44,10 @@
 | T030 | Post-earnings outcome tracking | P2 | T002,T027 | completed |
 | T031 | Calibration loop | P2 | T030 | completed |
 | T032 | Automated earnings season workflow | P2 | T029,T031 | completed |
-| T039 | Structure library + payoff-type mapping | P2 | T022 | pending |
-| T040 | Structure Advisor core (structure_advisor.py) | P2 | T039 | pending |
-| T041 | CLI integration + agent skill update | P2 | T040 | pending |
+| T039 | Structure library + payoff-type mapping | P2 | T022 | completed |
+| T040 | Structure Advisor core (structure_advisor.py) | P2 | T039 | completed |
+| T041 | CLI integration + agent skill update | P2 | T040 | completed |
+| T043 | Pre-market same-day earnings window | P1 | T032 | pending |
 
 ## Dependency Chains
 
@@ -98,6 +99,7 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T030 | tasks/task_030.md | completed |
 | T031 | tasks/task_031.md | completed |
 | T032 | tasks/task_032.md | completed |
-| T039 | tasks/task_039.md | pending   |
-| T040 | tasks/task_040.md | pending   |
-| T041 | tasks/task_041.md | pending   |
+| T039 | tasks/task_039.md | completed |
+| T040 | tasks/task_040.md | completed |
+| T041 | tasks/task_041.md | completed |
+| T043 | tasks/task_043.md | pending |
