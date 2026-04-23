@@ -87,6 +87,33 @@ Batch from ticker file (comma or newline separated):
 - `--cache-dir`, `--use-cache`, `--refresh-cache`: option chain cache controls
 - `--seed`: reproducible simulation seed
 
+### Structure Advisor Query
+
+Use this when the operator already has a payoff intent and wants a compact,
+ranked structure table without loading full chains into context.
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python earningsvol query \
+  --payoff crash \
+  --ticker GLD \
+  --expiry 2026-05-15 \
+  --spot 429.57 \
+  --budget 500 \
+  --max-notional 25000
+```
+
+Key query controls:
+
+- `--payoff`: one of `crash`, `rally`, `sideways`, `vol-expansion`,
+  `vol-compression`, `directional-convex`
+- `--budget`: optional max net debit filter
+- `--max-notional`: optional gross notional cap per candidate
+- `--validate`: optional manual structure string
+- `--output json`: machine-readable payload
+
+Output includes ranked structures plus assignment-risk notes when short legs are
+near expiry and in-the-money.
+
 If `--event-date` is omitted in live mode, the CLI auto-discovers from
 yfinance and now enforces strict guardrails:
 

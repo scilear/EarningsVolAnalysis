@@ -17,6 +17,8 @@ trade idea review.
   net vanna, and net charm
 - Macro vehicle support classification in regime output (SPY/XOP/XLE validated,
   VIX-family flagged with forward-model caveat)
+- Structure Advisor risk controls: optional per-query notional cap and
+  near-expiry assignment-risk warnings for short legs
 - Strategy construction, Monte Carlo EV/CVaR/convexity scoring, ranking
 - Generic playbook payload emission through the bridge layer
 
@@ -64,7 +66,9 @@ Structure Advisor query:
   --payoff crash \
   --ticker GLD \
   --expiry 2026-05-15 \
-  --spot 429.57
+  --spot 429.57 \
+  --budget 500 \
+  --max-notional 25000
 ```
 
 Pre-market same-day scan:
