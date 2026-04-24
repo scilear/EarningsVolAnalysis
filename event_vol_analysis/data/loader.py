@@ -46,6 +46,43 @@ def get_option_expiries(ticker: str) -> list[dt.date]:
     return [dt.datetime.strptime(exp, "%Y-%m-%d").date() for exp in expiries]
 
 
+def _normalize_chain_from_db(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize chain from option_quotes table."""
+    if frame.empty:
+        return frame
+
+    output = frame.rename(
+        columns={
+            "implied_volatility": "impliedVolatility",
+            "open_interest": "openInterest",
+        }
+    ).copy()
+
+    if "expiry" in output.columns:
+        output["expiry"] = pd.to_datetime(output["expiry"])
+
+    if "mid" not in output.columns:
+        output["mid"] = (output["bid"] + output["ask"]) / 2.0
+    if "spread" not in output.columns:
+        output["spread"] = (output["ask"] - output["bid"]).clip(lower=0.0)
+
+    required = {
+        "strike",
+        "bid",
+        "ask",
+        "impliedVolatility",
+        "openInterest",
+        "option_type",
+        "expiry",
+    }
+    missing = required.difference(output.columns)
+    if missing:
+        LOGGER.warning("EOD cache missing columns for %s: %s", missing)
+        return pd.DataFrame()
+
+    return output
+
+
 def _normalize_chain_frame(
     frame: pd.DataFrame,
     option_type: str,
@@ -442,7 +479,24 @@ def load_cached_chain_at_date(
 
         store = create_store(path)
         snapshot = store.query_eod_snapshot(ticker.upper(), as_of_date, min_quality)
+
+        # Fallback: if no snapshot metadata, try latest from option_quotes directly
         if snapshot is None:
+            ts = store.get_latest_timestamp(ticker.upper())
+            if ts is not None:
+                LOGGER.info(
+                    "Falling back to latest quote for %s at %s",
+                    ticker,
+                    ts,
+                )
+                chain = store.query_chain(
+                    ticker=ticker,
+                    timestamp=ts,
+                    expiry=expiry,
+                    min_quality="all",
+                )
+                if not chain.empty:
+                    return _normalize_chain_from_db(chain)
             return None
 
         ts = snapshot.get("timestamp")

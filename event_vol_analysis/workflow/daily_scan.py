@@ -562,38 +562,63 @@ def _run_overnight_analysis(cfg: ScanConfig) -> int:
 
     for ticker in cfg.tickers:
         snapshot = store.query_eod_snapshot(ticker.upper(), cfg.scan_date, "valid")
+
+        # Fallback: if no snapshot, use latest from option_quotes directly
         if snapshot is None:
-            LOGGER.warning(
-                "overnight: no valid EOD cache for %s on %s", ticker, cfg.scan_date
+            latest_ts = store.get_latest_timestamp(ticker.upper())
+            if latest_ts is not None:
+                LOGGER.info(
+                    "overnight: using fallback quote for %s from %s", ticker, latest_ts
+                )
+                chain_sample = store.query_chain(
+                    ticker=ticker.upper(),
+                    timestamp=latest_ts,
+                    min_quality="all",
+                )
+                if not chain_sample.empty:
+                    expiries = sorted(set(chain_sample["expiry"]))
+                    front_expiry = expiries[0] if len(expiries) > 0 else None
+                    back1_expiry = expiries[1] if len(expiries) > 1 else None
+                    back2_expiry = expiries[2] if len(expiries) > 2 else None
+                    spot = chain_sample["underlying_price"].iloc[0] if "underlying_price" in chain_sample.columns else None
+                    ts = latest_ts
+                else:
+                    skipped.append(_error_row(ticker, "no fallback quotes"))
+                    continue
+            else:
+                LOGGER.warning(
+                    "overnight: no valid EOD cache for %s on %s", ticker, cfg.scan_date
+                )
+                skipped.append(
+                    _error_row(ticker, f"no valid EOD cache for {cfg.scan_date}")
+                )
+                continue
+        else:
+            ts = snapshot.get("timestamp")
+            LOGGER.info("overnight: using cache for %s from %s", ticker, ts)
+
+            expiry_strs = _extract_snapshot_expiries(snapshot)
+
+            if not expiry_strs:
+                LOGGER.warning("overnight: no expiry data for %s in snapshot", ticker)
+                skipped.append(_error_row(ticker, "no expiry data in snapshot"))
+                continue
+
+            front_expiry, back1_expiry, back2_expiry = _resolve_snapshot_expiry_tuple(
+                snapshot
             )
-            skipped.append(
-                _error_row(ticker, f"no valid EOD cache for {cfg.scan_date}")
-            )
-            continue
+            if front_expiry is None or back1_expiry is None:
+                LOGGER.warning("overnight: could not parse expiries for %s", ticker)
+                skipped.append(_error_row(ticker, "invalid cached expiry set"))
+                continue
 
-        ts = snapshot.get("timestamp")
-        LOGGER.info("overnight: using cache for %s from %s", ticker, ts)
+            spot = snapshot.get("spot_price")
+            if spot is None or float(spot) <= 0:
+                LOGGER.warning("overnight: no valid spot in snapshot for %s", ticker)
+                skipped.append(_error_row(ticker, "no valid spot price in snapshot"))
+                continue
 
-        expiry_strs = _extract_snapshot_expiries(snapshot)
-
-        if not expiry_strs:
-            LOGGER.warning("overnight: no expiry data for %s in snapshot", ticker)
-            skipped.append(_error_row(ticker, "no expiry data in snapshot"))
-            continue
-
-        front_expiry, back1_expiry, back2_expiry = _resolve_snapshot_expiry_tuple(
-            snapshot
-        )
-        if front_expiry is None or back1_expiry is None:
-            LOGGER.warning("overnight: could not parse expiries for %s", ticker)
-            skipped.append(_error_row(ticker, "invalid cached expiry set"))
-            continue
-
-        spot = snapshot.get("spot_price")
-        if spot is None or float(spot) <= 0:
-            LOGGER.warning("overnight: no valid spot in snapshot for %s", ticker)
-            skipped.append(_error_row(ticker, "no valid spot price in snapshot"))
-            continue
+            # Continue to chain loading (original path)
 
         chain = load_cached_chain_at_date(
             ticker.upper(),

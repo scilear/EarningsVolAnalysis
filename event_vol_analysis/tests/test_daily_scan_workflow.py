@@ -531,6 +531,9 @@ def test_run_overnight_skips_ticker_without_cache(
         def query_eod_snapshot(self, ticker, date_, min_quality="valid"):
             return None
 
+        def get_latest_timestamp(self, ticker):
+            return None  # Simulates no fallback data either
+
     monkeypatch.setattr(daily_scan, "create_store", lambda path: _Store())
     monkeypatch.setattr(daily_scan, "LOG_PATH", Path("/dev/null"))
 
