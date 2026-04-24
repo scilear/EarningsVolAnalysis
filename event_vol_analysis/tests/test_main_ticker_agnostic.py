@@ -58,6 +58,12 @@ def test_main_uses_explicit_non_nvda_ticker_in_test_data_mode(
     assert "edge_ratio" in captured["context"]["snapshot"]
     assert "positioning" in captured["context"]["snapshot"]
     assert "signal_graph" in captured["context"]["snapshot"]
+    assert "trust_metrics" in captured["context"]["snapshot"]
+    assert captured["context"]["snapshot"]["trust_metrics"]["status"] in {
+        "PASS",
+        "WARN",
+        "FAIL",
+    }
     assert "type_classification" in captured["context"]["snapshot"]
     assert "vanna_net" in captured["context"]["snapshot"]
     assert "charm_net" in captured["context"]["snapshot"]
@@ -122,4 +128,4 @@ def test_main_uses_default_move_model_when_missing_from_args(
 
     main_module.main()
 
-    assert captured["context"]["snapshot"]["move_model_selected"] == "lognormal"
+    assert captured["context"]["snapshot"]["move_model_selected"] == "fat_tailed"

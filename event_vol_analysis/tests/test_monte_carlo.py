@@ -32,8 +32,8 @@ def test_fat_tails_increase_tail_probability() -> None:
         historical_sample_size=16,
     )
 
-    normal_tail = float(np.mean(np.abs(normal_like) > 0.06))
-    fat_tail = float(np.mean(np.abs(fat_tailed) > 0.06))
+    normal_tail = float(np.mean(np.abs(normal_like) > 2.0))
+    fat_tail = float(np.mean(np.abs(fat_tailed) > 2.0))
     assert fat_tail > normal_tail
 
 
@@ -78,3 +78,12 @@ def test_fat_tailed_model_with_insufficient_history_falls_back_to_lognormal() ->
         historical_sample_size=3,
     )
     assert np.array_equal(lognormal_moves, fat_tail_moves)
+
+
+def test_simulated_scale_matches_event_vol_input() -> None:
+    event_vol = 0.10
+    moves = simulate_moves(event_vol, simulations=100_000, seed=17, model="lognormal")
+    mean_abs = float(np.mean(np.abs(moves)))
+    # For a near-normal one-day move, E|X| ~= sigma * sqrt(2/pi)
+    expected = event_vol * np.sqrt(2.0 / np.pi)
+    assert mean_abs == pytest.approx(expected, rel=0.05)

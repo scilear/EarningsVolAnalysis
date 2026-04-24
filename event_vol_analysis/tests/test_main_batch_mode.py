@@ -54,6 +54,7 @@ def test_run_batch_mode_writes_summary_json(
             "regime": "Mixed / Transitional Setup",
             "top_structure": "CALENDAR",
             "score": 0.8123,
+            "trust_metrics": {"status": "PASS", "mismatch_ratio": 1.2},
             "blocking_warnings": [],
         },
         "TSLA": {
@@ -61,7 +62,8 @@ def test_run_batch_mode_writes_summary_json(
             "regime": "Convex Breakout Setup",
             "top_structure": "LONG_STRADDLE",
             "score": 0.7012,
-            "blocking_warnings": ["negative_event_var"],
+            "trust_metrics": {"status": "FAIL", "mismatch_ratio": 2.5},
+            "blocking_warnings": ["negative_event_var", "trust_gate_failed"],
         },
     }
 
@@ -100,7 +102,10 @@ def test_run_batch_mode_writes_summary_json(
     assert summary["results"][0]["regime"] == "Mixed / Transitional Setup"
     assert summary["results"][0]["top_structure"] == "CALENDAR"
     assert summary["results"][0]["score"] == pytest.approx(0.8123)
-    assert summary["results"][1]["blocking_warnings"] == ["negative_event_var"]
+    assert summary["results"][1]["blocking_warnings"] == [
+        "negative_event_var",
+        "trust_gate_failed",
+    ]
 
 
 def test_main_exits_with_code_2_when_auto_event_date_is_ambiguous(

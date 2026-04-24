@@ -13,8 +13,16 @@ FAT_TAIL_MAX_DF: float = 100.0
 FAT_TAIL_MAX_EXCESS_KURTOSIS: float = 6.0
 FAT_TAIL_MIN_HISTORY_MOVES: int = 6
 FAT_TAIL_CALIBRATION_FULL_SAMPLE: int = 12
-MOVE_MODEL_DEFAULT: str = "lognormal"
+MOVE_MODEL_DEFAULT: str = "fat_tailed"
 MOVE_MODELS: tuple[str, str] = ("lognormal", "fat_tailed")
+
+# Ranking trust hardening
+TRUST_MISMATCH_WARN_THRESHOLD: float = 1.5
+TRUST_MISMATCH_FAIL_THRESHOLD: float = 2.0
+
+# Short-vol guardrail (front expiry DTE window)
+SHORT_VOL_DTE_MIN: int = 1
+SHORT_VOL_DTE_MAX: int = 10
 
 # Strike filtering
 MONEYNESS_LOW: float = 0.80

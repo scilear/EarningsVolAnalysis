@@ -22,11 +22,11 @@ from event_option_playbook.backfill import auto_ingest_earnings_calendar_db
 from event_vol_analysis import config
 from event_vol_analysis.main import _batch_command_for_ticker
 from event_vol_analysis.data.loader import (
-    get_expiries_after,
     get_option_expiries,
     get_options_chain,
     get_spot_price,
     load_cached_chain_at_date,
+    select_front_expiry,
 )
 from event_vol_analysis.reports.playbook_scan import (
     PlaybookScanResult,
@@ -537,6 +537,7 @@ def _resolve_snapshot_expiry_tuple(
         dates.append(parsed)
     if not dates:
         return None, None, None
+    dates = sorted(set(dates))
     front = dates[0]
     back1 = dates[1] if len(dates) > 1 else front
     back2 = dates[2] if len(dates) > 2 else None
@@ -1068,8 +1069,14 @@ def _apply_hard_filters(
             else:
                 spot = get_spot_price(ticker)
                 expiries = get_option_expiries(ticker)
-                valid_expiries = get_expiries_after(expiries, event_date)
-                if not valid_expiries:
+                try:
+                    front_expiry = select_front_expiry(
+                        expiries,
+                        event_date,
+                        ticker=ticker,
+                        event_time_label=event.get("event_time_label"),
+                    )
+                except ValueError:
                     filtered.append(
                         _error_row(
                             ticker=ticker,
@@ -1077,11 +1084,9 @@ def _apply_hard_filters(
                         )
                     )
                     continue
-
-                expiry = valid_expiries[0]
                 chain = get_options_chain(
                     ticker,
-                    expiry,
+                    front_expiry,
                     cache_dir=Path("data/cache"),
                     use_cache=True,
                     refresh_cache=False,

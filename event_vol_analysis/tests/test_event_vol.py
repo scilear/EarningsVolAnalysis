@@ -140,6 +140,38 @@ def test_flat_term_structure_event_var_zero() -> None:
     assert abs(float(output["raw_event_var"]) - expected) < 1e-9
 
 
+def test_event_variance_exposes_annualized_and_daily_vol_fields() -> None:
+    today = dt.date.today()
+    event_date = today + dt.timedelta(days=7)
+    front_expiry = today + dt.timedelta(days=10)
+    back1_expiry = today + dt.timedelta(days=20)
+    back2_expiry = today + dt.timedelta(days=40)
+
+    front = _chain(0.5, front_expiry)
+    back1 = _chain(0.5, back1_expiry)
+    back2 = _chain(0.5, back2_expiry)
+
+    output = event_variance(
+        front,
+        back1,
+        back2,
+        100.0,
+        event_date,
+        front_expiry,
+        back1_expiry,
+        back2_expiry,
+    )
+
+    assert float(output["event_var_annualized"]) == pytest.approx(
+        float(output["event_var"]) * 252.0,
+        rel=1e-9,
+    )
+    assert float(output["event_vol_annualized"]) == pytest.approx(
+        float(output["event_vol_daily"]) * (252.0 ** 0.5),
+        rel=1e-9,
+    )
+
+
 def test_zero_liquidity_after_filtering_raises(tmp_path, monkeypatch) -> None:
     expiry = dt.date(2030, 1, 1)
     chain = pd.DataFrame(

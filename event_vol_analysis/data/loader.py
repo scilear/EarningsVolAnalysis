@@ -43,7 +43,8 @@ def get_option_expiries(ticker: str) -> list[dt.date]:
     expiries = yf_ticker.options
     if not expiries:
         raise ValueError("No option expiries available for ticker.")
-    return [dt.datetime.strptime(exp, "%Y-%m-%d").date() for exp in expiries]
+    parsed = [dt.datetime.strptime(exp, "%Y-%m-%d").date() for exp in expiries]
+    return sorted(set(parsed))
 
 
 def _normalize_chain_from_db(frame: pd.DataFrame) -> pd.DataFrame:
@@ -407,6 +408,39 @@ def get_expiries_after(
 ) -> list[dt.date]:
     """Filter expiries that are on or after a target date."""
     return sorted([exp for exp in expiries if exp >= target_date])
+
+
+def select_front_expiry(
+    expiries: Iterable[dt.date],
+    event_date: dt.date,
+    *,
+    ticker: str | None = None,
+    event_time_label: str | None = None,
+) -> dt.date:
+    """Select the nearest valid front expiry around the earnings event.
+
+    Timing policy: require strictly after event date to avoid accidental
+    same-day 0DTE selection.
+    """
+    ordered = sorted(set(expiries))
+    if not ordered:
+        name = ticker or "ticker"
+        raise ValueError(f"No option expiries available for {name}.")
+
+    candidates = [exp for exp in ordered if exp > event_date]
+
+    if not candidates:
+        name = ticker or "ticker"
+        timing_label = (
+            f" (event_time_label={event_time_label})"
+            if event_time_label is not None
+            else ""
+        )
+        raise ValueError(
+            "No valid front expiry found after event date "
+            f"{event_date} for {name}{timing_label}."
+        )
+    return candidates[0]
 
 
 def _select_back3_expiry(

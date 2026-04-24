@@ -9,6 +9,7 @@ from event_vol_analysis.data.loader import (
     get_dividend_yield,
     get_expiries_after,
     resolve_next_earnings_date,
+    select_front_expiry,
 )
 
 
@@ -76,6 +77,43 @@ def test_get_expiries_after_filters() -> None:
     ]
     result = get_expiries_after(expiries, dt.date(2026, 2, 1))
     assert result == [dt.date(2026, 2, 1), dt.date(2026, 3, 1)]
+
+
+def test_select_front_expiry_prefers_nearest_after_event_for_unknown_timing() -> None:
+    expiries = [
+        dt.date(2026, 8, 21),
+        dt.date(2026, 8, 28),
+        dt.date(2026, 9, 18),
+    ]
+    out = select_front_expiry(
+        expiries,
+        dt.date(2026, 8, 21),
+        ticker="TSLA",
+        event_time_label=None,
+    )
+    assert out == dt.date(2026, 8, 28)
+
+
+def test_select_front_expiry_bmo_still_avoids_same_day() -> None:
+    expiries = [dt.date(2026, 8, 21), dt.date(2026, 8, 28)]
+    out = select_front_expiry(
+        expiries,
+        dt.date(2026, 8, 21),
+        ticker="TSLA",
+        event_time_label="bmo",
+    )
+    assert out == dt.date(2026, 8, 28)
+
+
+def test_select_front_expiry_requires_strictly_after_for_amc() -> None:
+    expiries = [dt.date(2026, 8, 21), dt.date(2026, 8, 28)]
+    out = select_front_expiry(
+        expiries,
+        dt.date(2026, 8, 21),
+        ticker="TSLA",
+        event_time_label="amc",
+    )
+    assert out == dt.date(2026, 8, 28)
 
 
 class _MockEarningsTicker:

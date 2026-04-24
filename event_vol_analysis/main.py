@@ -73,6 +73,7 @@ from event_vol_analysis.data.loader import (
     get_price_history,
     get_spot_price,
     resolve_next_earnings_date,
+    select_front_expiry,
 )
 from event_vol_analysis.data.test_data import (
     generate_test_data_set,
@@ -175,6 +176,8 @@ STRATEGY_RATIONALE: dict[str, str] = {
         "the short and long strikes."
     ),
 }
+
+_SHORT_VOL_STRATEGY_NAMES = {"iron_condor", "calendar"}
 
 
 def _run_query_cli(argv: list[str]) -> int:
@@ -385,6 +388,52 @@ def _not_applicable_reason(name: str, snapshot: dict) -> str:
             return "Entry requires 1–3 days after earnings event (currently pre-event)"
         return f"{days}d after event exceeds the 3-day entry window"
     return "Entry conditions not met"
+
+
+def _compute_trust_metrics(
+    *,
+    implied_move: float,
+    simulation_comparison: dict[str, dict[str, float]],
+) -> dict[str, float | str | bool]:
+    """Compute ranking trust diagnostics from implied-vs-simulated scale."""
+    selected = simulation_comparison.get("fat_tailed", {})
+    selected_mean_abs = float(selected.get("mean_abs_move", 0.0) or 0.0)
+    ratio = implied_move / max(selected_mean_abs, config.TIME_EPSILON)
+
+    fail_low = 1.0 / max(config.TRUST_MISMATCH_FAIL_THRESHOLD, 1e-9)
+    warn_low = 1.0 / max(config.TRUST_MISMATCH_WARN_THRESHOLD, 1e-9)
+
+    if ratio > config.TRUST_MISMATCH_FAIL_THRESHOLD or ratio < fail_low:
+        status = "FAIL"
+        confidence = "LOW"
+    elif ratio > config.TRUST_MISMATCH_WARN_THRESHOLD or ratio < warn_low:
+        status = "WARN"
+        confidence = "MEDIUM"
+    else:
+        status = "PASS"
+        confidence = "HIGH"
+
+    return {
+        "implied_move": float(implied_move),
+        "simulated_mean_abs_move": selected_mean_abs,
+        "mismatch_ratio": float(ratio),
+        "status": status,
+        "confidence": confidence,
+        "fat_tail_active": bool(
+            simulation_comparison.get("fat_tailed", {}).get("tail_prob_gt_6pct", 0.0)
+            > simulation_comparison.get("lognormal", {}).get("tail_prob_gt_6pct", 0.0)
+        ),
+    }
+
+
+def _short_vol_dte_reason(front_dte: int) -> str | None:
+    """Return rejection reason when short-vol DTE is outside allowed window."""
+    if config.SHORT_VOL_DTE_MIN <= front_dte <= config.SHORT_VOL_DTE_MAX:
+        return None
+    return (
+        f"front DTE {front_dte}d outside "
+        f"[{config.SHORT_VOL_DTE_MIN}, {config.SHORT_VOL_DTE_MAX}]"
+    )
 
 
 def _load_tickers_from_file(file_path: str) -> list[str]:
@@ -996,11 +1045,15 @@ def main() -> None:
                 back2_expiry = cache_back2_expiry
             else:
                 expiries = get_option_expiries(ticker)
-                post_event = get_expiries_after(expiries, event_date)
+                front_expiry = select_front_expiry(
+                    expiries,
+                    event_date,
+                    ticker=ticker,
+                    event_time_label=_lookup_event_time_label(ticker, event_date),
+                )
+                post_event = get_expiries_after(expiries, front_expiry)
                 if len(post_event) < 2:
                     raise ValueError("Insufficient expiries after event date.")
-
-                front_expiry = post_event[0]
                 back1_expiry = post_event[1]
                 back2_expiry = post_event[2] if len(post_event) > 2 else None
 
@@ -1147,7 +1200,7 @@ def main() -> None:
     )
     back_iv = float(event_info["back_iv"]) if event_info["back_iv"] is not None else 0.0
     back2_iv = event_info.get("back2_iv")
-    event_vol = float(np.sqrt(float(event_info["event_var"])))
+    event_vol = float(event_info.get("event_vol_daily", 0.0) or 0.0)
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
 
     # Calibrate IV scenario magnitudes from event vol structure (live only)
@@ -1266,6 +1319,11 @@ def main() -> None:
         },
     }
 
+    trust_metrics = _compute_trust_metrics(
+        implied_move=implied_move,
+        simulation_comparison=simulation_comparison,
+    )
+
     strangle_offset = implied_move * 0.8
     strategies = build_strategies(
         front_chain,
@@ -1314,8 +1372,24 @@ def main() -> None:
                 }
             )
 
+    short_vol_dte_block_reason = _short_vol_dte_reason(front_dte)
+    if short_vol_dte_block_reason is not None:
+        not_applicable.extend(
+            [
+                {"name": "IRON_CONDOR", "reason": short_vol_dte_block_reason},
+                {"name": "CALENDAR", "reason": short_vol_dte_block_reason},
+            ]
+        )
+
     results = []
     for strategy in strategies:
+        if strategy.name in _SHORT_VOL_STRATEGY_NAMES and short_vol_dte_block_reason:
+            LOGGER.info(
+                "Skipping short-vol strategy %s: %s",
+                strategy.name,
+                short_vol_dte_block_reason,
+            )
+            continue
         try:
             base_pnls = strategy_pnl_vec(
                 strategy,
@@ -1569,6 +1643,7 @@ def main() -> None:
         "move_model_default": config.MOVE_MODEL_DEFAULT,
         "fat_tail_calibration": fat_tail_inputs,
         "simulation_comparison": simulation_comparison,
+        "trust_metrics": trust_metrics,
         "rr25": rr25_value,
         "bf25": bf25_value,
         "rr25_raw": rr25_raw,
@@ -1715,6 +1790,8 @@ def main() -> None:
             blocking_warnings.append("term_structure_inversion")
         if snapshot.get("gex_note"):
             blocking_warnings.append("gex_concentration_ambiguous")
+        if snapshot.get("trust_metrics", {}).get("status") == "FAIL":
+            blocking_warnings.append("trust_gate_failed")
 
         analysis_summary = {
             "ticker": ticker,
@@ -1727,6 +1804,7 @@ def main() -> None:
             "implied_move": snapshot.get("implied_move"),
             "front_iv": snapshot.get("front_iv"),
             "back_iv": snapshot.get("back_iv"),
+            "trust_metrics": snapshot.get("trust_metrics"),
             "blocking_warnings": blocking_warnings,
             # Full TYPE classification for playbook scan
             "vol_regime": {
@@ -1952,6 +2030,12 @@ def _print_console_snapshot(
     print(f"ImpliedMove / P75:    {implied_ratio:.4f}")
     print(f"EventVol:             {event_vol:.4f}")
     print(f"EventVol / FrontIV:   {event_vol_ratio:.4f}")
+    if snapshot and snapshot.get("trust_metrics"):
+        trust = snapshot["trust_metrics"]
+        print(f"Trust Gate:           {trust['status']}")
+        print(f"Mismatch Ratio:       {trust['mismatch_ratio']:.2f}x")
+        if trust["status"] == "FAIL":
+            print("TRUST GATE FAILED: implied-vs-simulated scale mismatch")
 
     if regime:
         print("\n" + "=" * 60)
@@ -2057,6 +2141,35 @@ def _resolve_event_timing_bucket(
     if amc_count == 0 and bmo_count == 0:
         return "unknown"
     return "amc" if amc_count >= bmo_count else "bmo"
+
+
+def _lookup_event_time_label(ticker: str, event_date: dt.date) -> str | None:
+    """Return raw event_time_label from local registry when available."""
+    db_path = Path("data/options_intraday.db")
+    if not db_path.exists():
+        return None
+    try:
+        from data.option_data_store import create_store
+
+        store = create_store(db_path)
+        registry = store.get_event_registry()
+        if registry.empty:
+            return None
+        mask = (
+            registry["underlying_symbol"].astype(str).str.upper()
+            == ticker.upper()
+        ) & (registry["event_date"] == event_date)
+        exact = registry[mask]
+        if exact.empty:
+            return None
+        value = exact.iloc[0].get("event_time_label")
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+    except Exception:
+        LOGGER.debug("Could not load event_time_label from registry.", exc_info=True)
+        return None
 
 
 if __name__ == "__main__":

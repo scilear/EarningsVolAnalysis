@@ -38,7 +38,7 @@ def simulate_moves(
             f"Unsupported move model '{model}'. Supported models: "
             f"{', '.join(MOVE_MODELS)}"
         )
-    sigma_1d = event_vol / math.sqrt(252.0)
+    sigma_1d = float(event_vol)
     rng = np.random.default_rng(seed)
     z = _sample_innovations(
         rng,

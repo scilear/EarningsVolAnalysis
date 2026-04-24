@@ -519,6 +519,32 @@ HTML_TEMPLATE = """\
   </table>
   {% endif %}
 
+  {% if snapshot.trust_metrics %}
+  <h4>Trust Metrics</h4>
+  <table>
+    <tr>
+      <th>Implied Move</th>
+      <td>{{ "%.2f" | format(snapshot.trust_metrics.implied_move * 100) }}%</td>
+      <th>Simulated Mean |Move|</th>
+      <td>{{ "%.2f" | format(snapshot.trust_metrics.simulated_mean_abs_move * 100) }}%</td>
+    </tr>
+    <tr>
+      <th>Mismatch Ratio</th>
+      <td>{{ "%.2f" | format(snapshot.trust_metrics.mismatch_ratio) }}x</td>
+      <th>Fat Tail Active</th>
+      <td>{{ snapshot.trust_metrics.fat_tail_active }}</td>
+    </tr>
+    <tr>
+      <th>Gate Status</th>
+      <td>
+        <strong>{{ snapshot.trust_metrics.status }}</strong>
+      </td>
+      <th>Confidence</th>
+      <td>{{ snapshot.trust_metrics.confidence }}</td>
+    </tr>
+  </table>
+  {% endif %}
+
   <h2>Dealer Positioning & Microstructure</h2>
 
   <table>

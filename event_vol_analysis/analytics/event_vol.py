@@ -79,6 +79,9 @@ def event_variance(
         )
 
     event_var = max(event_var_daily, 0.0)
+    event_var_annualized = max(raw_event_var_annualized, 0.0)
+    event_vol_daily = event_var**0.5
+    event_vol_annualized = event_var_annualized**0.5
 
     # raw_event_var: annualized event-day variance rate (IV² units).
     # event_variance_ratio: fraction of total front variance from the event.
@@ -112,6 +115,9 @@ def event_variance(
         "front_iv": front_iv,
         "back_iv": back1_iv,
         "event_var": event_var,
+        "event_var_annualized": event_var_annualized,
+        "event_vol_daily": event_vol_daily,
+        "event_vol_annualized": event_vol_annualized,
         "raw_event_var": raw_event_var,
         "ratio": ratio,
         "warning_level": warning_level,
