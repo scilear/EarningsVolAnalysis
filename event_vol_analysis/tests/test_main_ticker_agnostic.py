@@ -59,11 +59,16 @@ def test_main_uses_explicit_non_nvda_ticker_in_test_data_mode(
     assert "positioning" in captured["context"]["snapshot"]
     assert "signal_graph" in captured["context"]["snapshot"]
     assert "trust_metrics" in captured["context"]["snapshot"]
+    assert "simulation_event_vol" in captured["context"]["snapshot"]
     assert captured["context"]["snapshot"]["trust_metrics"]["status"] in {
         "PASS",
         "WARN",
         "FAIL",
     }
+    assert isinstance(
+        captured["context"]["snapshot"]["trust_metrics"]["ranking_allowed"],
+        bool,
+    )
     assert "type_classification" in captured["context"]["snapshot"]
     assert "vanna_net" in captured["context"]["snapshot"]
     assert "charm_net" in captured["context"]["snapshot"]
@@ -129,3 +134,61 @@ def test_main_uses_default_move_model_when_missing_from_args(
     main_module.main()
 
     assert captured["context"]["snapshot"]["move_model_selected"] == "fat_tailed"
+
+
+def test_main_trust_gate_fail_suppresses_rankings(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict = {}
+
+    def _capture_report(path: Path, context: dict) -> None:
+        captured["path"] = path
+        captured["context"] = context
+
+    args = argparse.Namespace(
+        ticker="TSLA",
+        tickers=None,
+        ticker_file=None,
+        event_date=None,
+        output=None,
+        cache_dir="data/cache",
+        use_cache=False,
+        refresh_cache=False,
+        seed=42,
+        move_model="fat_tailed",
+        test_data=True,
+        test_scenario="baseline",
+        test_data_dir=None,
+        save_test_data=None,
+        batch_output_dir="reports/batch",
+        batch_summary_json=None,
+        analysis_summary_json=None,
+        cache_only=False,
+        cache_spot=None,
+        cache_front_expiry=None,
+        cache_back1_expiry=None,
+        cache_back2_expiry=None,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", lambda self: args)
+    monkeypatch.setattr(main_module, "write_report", _capture_report)
+    monkeypatch.setattr(
+        main_module, "plot_move_comparison", lambda *a, **k: "move-plot"
+    )
+    monkeypatch.setattr(
+        main_module, "plot_pnl_distribution", lambda *a, **k: "pnl-plot"
+    )
+    monkeypatch.setattr(main_module, "_print_console_snapshot", lambda *a, **k: None)
+    monkeypatch.setattr(
+        main_module,
+        "_resolve_simulation_event_vol",
+        lambda **kwargs: 0.0001,
+    )
+
+    main_module.main()
+
+    assert captured["context"]["snapshot"]["trust_metrics"]["status"] == "FAIL"
+    assert captured["context"]["snapshot"]["trust_metrics"]["ranking_allowed"] is False
+    assert captured["context"]["rankings"] == []

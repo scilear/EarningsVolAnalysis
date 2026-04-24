@@ -6,6 +6,7 @@ import argparse
 import datetime as dt
 import json
 import logging
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -419,6 +420,7 @@ def _compute_trust_metrics(
         "mismatch_ratio": float(ratio),
         "status": status,
         "confidence": confidence,
+        "ranking_allowed": status != "FAIL",
         "fat_tail_active": bool(
             simulation_comparison.get("fat_tailed", {}).get("tail_prob_gt_6pct", 0.0)
             > simulation_comparison.get("lognormal", {}).get("tail_prob_gt_6pct", 0.0)
@@ -434,6 +436,18 @@ def _short_vol_dte_reason(front_dte: int) -> str | None:
         f"front DTE {front_dte}d outside "
         f"[{config.SHORT_VOL_DTE_MIN}, {config.SHORT_VOL_DTE_MAX}]"
     )
+
+
+def _resolve_simulation_event_vol(
+    *,
+    event_vol: float,
+    implied_move: float,
+) -> float:
+    """Calibrate simulation sigma to avoid under-scaled move distributions."""
+    if implied_move <= 0:
+        return max(float(event_vol), 0.0)
+    implied_sigma_proxy = implied_move / math.sqrt(2.0 / math.pi)
+    return max(float(event_vol), float(implied_sigma_proxy))
 
 
 def _load_tickers_from_file(file_path: str) -> list[str]:
@@ -1202,6 +1216,10 @@ def main() -> None:
     back2_iv = event_info.get("back2_iv")
     event_vol = float(event_info.get("event_vol_daily", 0.0) or 0.0)
     event_vol_ratio = event_vol / max(front_iv, config.TIME_EPSILON)
+    simulation_event_vol = _resolve_simulation_event_vol(
+        event_vol=event_vol,
+        implied_move=implied_move,
+    )
 
     # Calibrate IV scenario magnitudes from event vol structure (live only)
     if not args.test_data and front_iv > 0 and back_iv > 0:
@@ -1277,7 +1295,7 @@ def main() -> None:
     shock_levels = [0] + [shock for shock in config.VOL_SHOCKS if shock != 0]
     moves_by_shock = {}
     for shock in shock_levels:
-        shock_vol = max(event_vol * (1 + shock / 100.0), 0.0)
+        shock_vol = max(simulation_event_vol * (1 + shock / 100.0), 0.0)
         seed = None if args.seed is None else args.seed + shock + 1000
         moves_by_shock[shock] = simulate_moves(
             shock_vol,
@@ -1290,13 +1308,13 @@ def main() -> None:
 
     comparison_seed = 0 if args.seed is None else args.seed + 777
     lognormal_moves = simulate_moves(
-        event_vol,
+        simulation_event_vol,
         config.MC_SIMULATIONS,
         seed=comparison_seed,
         model="lognormal",
     )
     fat_tailed_moves = simulate_moves(
-        event_vol,
+        simulation_event_vol,
         config.MC_SIMULATIONS,
         seed=comparison_seed,
         model="fat_tailed",
@@ -1482,34 +1500,61 @@ def main() -> None:
         results.append(metrics)
 
     ranked = score_strategies(results)
-    top = ranked[0]
-    top_strategy = top["strategy_obj"]
+    if not ranked:
+        LOGGER.error("No viable strategies after liquidity/DTE filtering.")
+        return
 
-    ev_base = float(np.mean(top["pnls"]))
-    ev_2x = float(
-        np.mean(
-            strategy_pnl_vec(
-                top_strategy,
-                combined_chain,
-                spot,
-                moves_by_shock[0],
-                front_expiry,
-                back1_expiry,
-                event_date,
-                front_iv,
-                back_iv,
-                config.SLIPPAGE_PCT * 2.0,
-                "base_crush",
+    trust_gate_failed = trust_metrics.get("status") == "FAIL"
+    if trust_gate_failed:
+        LOGGER.warning(
+            "Trust gate failed (mismatch %.2fx): suppressing recommendations.",
+            float(trust_metrics.get("mismatch_ratio", 0.0)),
+        )
+        not_applicable.append(
+            {
+                "name": "TRUST_GATE",
+                "reason": (
+                    "Ranking suppressed due to implied-vs-simulated mismatch "
+                    f"({float(trust_metrics.get('mismatch_ratio', 0.0)):.2f}x)"
+                ),
+            }
+        )
+
+    top = ranked[0]
+    if trust_gate_failed:
+        ev_base = 0.0
+        ev_2x = 0.0
+        pnl_plot = plot_pnl_distribution(
+            np.array([0.0]),
+            "Trust gate blocked strategy ranking",
+        )
+    else:
+        top_strategy = top["strategy_obj"]
+        ev_base = float(np.mean(top["pnls"]))
+        ev_2x = float(
+            np.mean(
+                strategy_pnl_vec(
+                    top_strategy,
+                    combined_chain,
+                    spot,
+                    moves_by_shock[0],
+                    front_expiry,
+                    back1_expiry,
+                    event_date,
+                    front_iv,
+                    back_iv,
+                    config.SLIPPAGE_PCT * 2.0,
+                    "base_crush",
+                )
             )
         )
-    )
+        pnl_plot = plot_pnl_distribution(
+            top["pnls"],
+            f"Top Strategy: {top['strategy']}",
+        )
 
     expected_move_dollar = max(implied_move, hist_p75) * spot * 100
     move_plot = plot_move_comparison(implied_move, hist_p75)
-    pnl_plot = plot_pnl_distribution(
-        top["pnls"],
-        f"Top Strategy: {top['strategy']}",
-    )
     rr25_raw = skew["rr25"]
     bf25_raw = skew["bf25"]
     rr25_value = f"{skew['rr25']:.4f}" if skew["rr25"] is not None else "N/A"
@@ -1528,6 +1573,7 @@ def main() -> None:
         "back_iv": back_iv,
         "back2_iv": back2_iv,
         "event_vol": event_vol,
+        "simulation_event_vol": simulation_event_vol,
         "event_vol_ratio": event_vol_ratio,
         "expected_move_dollar": expected_move_dollar,
         "raw_event_var": event_info["raw_event_var"],
@@ -1700,12 +1746,16 @@ def main() -> None:
     except ValueError as exc:
         LOGGER.info("Outcome prediction not stored (%s): %s", ticker, exc)
 
+    ranking_payload = ranked if not trust_gate_failed else []
+
     # Compute alignment for all strategies
-    compute_all_alignments(ranked, regime)
+    compute_all_alignments(ranking_payload, regime)
 
     # ── Post-event calendar (separate evaluation model) ───────────
     post_event_cal = None
-    if should_build_strategy("POST_EVENT_CALENDAR", early_snapshot):
+    if (not trust_gate_failed) and should_build_strategy(
+        "POST_EVENT_CALENDAR", early_snapshot
+    ):
         t_back1 = max(back_dte / 365.0, config.TIME_EPSILON)
         pe_result = build_post_event_calendar(
             spot,
@@ -1742,7 +1792,7 @@ def main() -> None:
     generic_playbook = build_playbook_recommendation(
         generic_event,
         generic_market_context,
-        ranked,
+        ranking_payload,
         rationale_map=STRATEGY_RATIONALE,
         regime=regime,
         not_applicable=not_applicable,
@@ -1755,7 +1805,7 @@ def main() -> None:
             "ticker": ticker,
             "snapshot": snapshot,
             "regime": regime,
-            "rankings": ranked,
+            "rankings": ranking_payload,
             "move_plot": move_plot,
             "pnl_plot": pnl_plot,
             "post_event_calendar": post_event_cal,
@@ -1798,8 +1848,12 @@ def main() -> None:
             "event_date": str(event_date),
             "event_date_source": event_date_source,
             "regime": regime.get("composite_regime"),
-            "top_structure": top.get("name"),
-            "score": round(float(top.get("score", 0.0)), 4),
+            "top_structure": None if trust_gate_failed else top.get("name"),
+            "score": (
+                None
+                if trust_gate_failed
+                else round(float(top.get("score", 0.0)), 4)
+            ),
             "move_model": args.move_model,
             "implied_move": snapshot.get("implied_move"),
             "front_iv": snapshot.get("front_iv"),
@@ -2036,6 +2090,8 @@ def _print_console_snapshot(
         print(f"Mismatch Ratio:       {trust['mismatch_ratio']:.2f}x")
         if trust["status"] == "FAIL":
             print("TRUST GATE FAILED: implied-vs-simulated scale mismatch")
+    if snapshot and snapshot.get("simulation_event_vol") is not None:
+        print(f"Sim Sigma (daily):    {snapshot['simulation_event_vol']:.4f}")
 
     if regime:
         print("\n" + "=" * 60)

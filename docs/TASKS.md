@@ -55,7 +55,8 @@
 | T041 | CLI integration + agent skill update | P2 | T040 | completed |
 | T044 | EOD cache refresh + overnight analysis mode | P1 | T032 | completed |
 | T043 | Pre-market same-day earnings window | P1 | T032 | completed |
-| T045 | Ranking Trust Hardening (scale consistency + fat-tail model + realized-vs-implied validation + TSLA fix) | P0 | T021,T022,T044 | pending |
+| T045 | Ranking Trust Hardening (scale consistency + fat-tail model + realized-vs-implied validation + TSLA fix) | P0 | T021,T022,T044 | completed | tasks/task_045_detailed.md |
+| T047 | Ranking Trust Hardening v2 — Corrected Approach (KS test, mixture model, DTE weighting) | P0 | T045 | pending | tasks/task_047.md |
 | T046 | Rate Limiting + Dynamic Earnings Universe for EOD | P1 | T044 | pending |
 
 ## Dependency Chains
@@ -69,7 +70,7 @@
 - Decision Engine: `T027` → `T028` → `T029`
 - Calibration: `T027` → `T030` → `T031` → `T032`
 - Structure Advisor: `T022` → `T039` → `T040` → `T041`
-- Ranking Trust: `T021` + `T022` + `T044` → `T045`
+- Ranking Trust: `T021` + `T022` + `T044` → `T045` → `T047`
 
 ## Detailed Specs
 

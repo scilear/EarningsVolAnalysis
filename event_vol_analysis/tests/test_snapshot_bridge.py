@@ -109,3 +109,18 @@ def test_build_playbook_recommendation_returns_no_trade_when_empty() -> None:
     recommendation = build_playbook_recommendation(event, context, [])
     assert recommendation.is_no_trade
     assert recommendation.no_trade_reason is not None
+
+
+def test_build_playbook_recommendation_returns_no_trade_when_trust_blocked() -> None:
+    event = snapshot_to_event_spec("NVDA", _snapshot())
+    blocked_snapshot = _snapshot() | {
+        "trust_metrics": {
+            "status": "FAIL",
+            "ranking_allowed": False,
+            "mismatch_ratio": 2.6,
+        }
+    }
+    context = snapshot_to_market_context(blocked_snapshot)
+    recommendation = build_playbook_recommendation(event, context, [])
+    assert recommendation.is_no_trade
+    assert recommendation.no_trade_reason is not None

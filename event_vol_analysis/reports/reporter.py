@@ -305,6 +305,14 @@ HTML_TEMPLATE = """\
       <th>Move Model (Default)</th>
       <td>{{ snapshot.move_model_default }}</td>
     </tr>
+    {% if snapshot.simulation_event_vol is not none %}
+    <tr>
+      <th>Simulation Sigma (daily)</th>
+      <td>{{ "%.2f" | format(snapshot.simulation_event_vol * 100) }}%</td>
+      <th></th>
+      <td></td>
+    </tr>
+    {% endif %}
   </table>
 
   {% if snapshot.conditional_expected %}
@@ -541,6 +549,12 @@ HTML_TEMPLATE = """\
       </td>
       <th>Confidence</th>
       <td>{{ snapshot.trust_metrics.confidence }}</td>
+    </tr>
+    <tr>
+      <th>Ranking Allowed</th>
+      <td>{{ snapshot.trust_metrics.ranking_allowed }}</td>
+      <th></th>
+      <td></td>
     </tr>
   </table>
   {% endif %}

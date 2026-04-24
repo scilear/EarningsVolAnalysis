@@ -54,7 +54,11 @@ def test_run_batch_mode_writes_summary_json(
             "regime": "Mixed / Transitional Setup",
             "top_structure": "CALENDAR",
             "score": 0.8123,
-            "trust_metrics": {"status": "PASS", "mismatch_ratio": 1.2},
+            "trust_metrics": {
+                "status": "PASS",
+                "mismatch_ratio": 1.2,
+                "ranking_allowed": True,
+            },
             "blocking_warnings": [],
         },
         "TSLA": {
@@ -62,7 +66,11 @@ def test_run_batch_mode_writes_summary_json(
             "regime": "Convex Breakout Setup",
             "top_structure": "LONG_STRADDLE",
             "score": 0.7012,
-            "trust_metrics": {"status": "FAIL", "mismatch_ratio": 2.5},
+            "trust_metrics": {
+                "status": "FAIL",
+                "mismatch_ratio": 2.5,
+                "ranking_allowed": False,
+            },
             "blocking_warnings": ["negative_event_var", "trust_gate_failed"],
         },
     }
