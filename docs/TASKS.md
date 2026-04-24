@@ -55,7 +55,8 @@
 | T041 | CLI integration + agent skill update | P2 | T040 | completed |
 | T044 | EOD cache refresh + overnight analysis mode | P1 | T032 | completed |
 | T043 | Pre-market same-day earnings window | P1 | T032 | completed |
-| T046 | Rate limiting + dynamic earnings universe for EOD | P1 | T044 | pending |
+| T045 | Ranking Trust Hardening (scale consistency + fat-tail model + realized-vs-implied validation + TSLA fix) | P0 | T021,T022,T044 | pending |
+| T046 | Rate Limiting + Dynamic Earnings Universe for EOD | P1 | T044 | pending |
 
 ## Dependency Chains
 
@@ -119,7 +120,7 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T041 | tasks/task_041.md | completed |
 | T043 | tasks/task_043.md | completed |
 | T044 | tasks/task_044.md | completed |
-| T045 | tasks/task_045.md | pending |
+| T046 | tasks/task_046.md | pending |
 
 ## Cross-Repo Ownership Notes
 
