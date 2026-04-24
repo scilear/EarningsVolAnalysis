@@ -29,7 +29,6 @@ from event_vol_analysis.calibration import (
     calibrate_ticker_params,
 )
 
-
 # ── Shared helpers ──────────────────────────────────────────────────────────
 
 
@@ -154,8 +153,16 @@ class TestMinOi:
     # 10 strikes all clearly within ±14% of spot=100
     # (avoiding the ±15% boundary to prevent float-precision edge cases)
     _STRIKES = [
-        88.0, 91.0, 94.0, 97.0, 100.0,
-        103.0, 106.0, 109.0, 112.0, 114.0,
+        88.0,
+        91.0,
+        94.0,
+        97.0,
+        100.0,
+        103.0,
+        106.0,
+        109.0,
+        112.0,
+        114.0,
     ]
 
     def _chain(self, oi_vals: list[int]) -> pd.DataFrame:
@@ -177,16 +184,12 @@ class TestMinOi:
         assert _min_oi(chain, self._SPOT) == 200
 
     def test_fallback_empty_chain(self) -> None:
-        chain = pd.DataFrame(
-            {"strike": [], "openInterest": [], "option_type": []}
-        )
+        chain = pd.DataFrame({"strike": [], "openInterest": [], "option_type": []})
         assert _min_oi(chain, self._SPOT) == config.MIN_OI
 
     def test_fallback_no_oi_column(self) -> None:
         n = len(self._STRIKES)
-        chain = pd.DataFrame(
-            {"strike": self._STRIKES, "option_type": ["call"] * n}
-        )
+        chain = pd.DataFrame({"strike": self._STRIKES, "option_type": ["call"] * n})
         assert _min_oi(chain, self._SPOT) == config.MIN_OI
 
     def test_fallback_all_zero_oi(self) -> None:
@@ -202,13 +205,19 @@ class TestMaxSpreadPct:
 
     _SPOT = 100.0
     _STRIKES = [
-        90.0, 92.5, 95.0, 97.5, 100.0,
-        102.5, 105.0, 107.5, 110.0, 112.5,
+        90.0,
+        92.5,
+        95.0,
+        97.5,
+        100.0,
+        102.5,
+        105.0,
+        107.5,
+        110.0,
+        112.5,
     ]
 
-    def _chain_from_spread_pcts(
-        self, spread_pcts: list[float]
-    ) -> pd.DataFrame:
+    def _chain_from_spread_pcts(self, spread_pcts: list[float]) -> pd.DataFrame:
         rows = []
         mid = 10.0
         for s, sp in zip(self._STRIKES, spread_pcts):
@@ -225,8 +234,16 @@ class TestMaxSpreadPct:
 
     def test_returns_65th_percentile(self) -> None:
         spread_pcts = [
-            0.01, 0.02, 0.03, 0.04, 0.05,
-            0.06, 0.07, 0.08, 0.09, 0.10,
+            0.01,
+            0.02,
+            0.03,
+            0.04,
+            0.05,
+            0.06,
+            0.07,
+            0.08,
+            0.09,
+            0.10,
         ]
         chain = self._chain_from_spread_pcts(spread_pcts)
         expected = float(pd.Series(spread_pcts).quantile(0.65))
@@ -244,9 +261,7 @@ class TestMaxSpreadPct:
         assert _max_spread_pct(chain, self._SPOT) == pytest.approx(0.20)
 
     def test_fallback_empty_chain(self) -> None:
-        chain = pd.DataFrame(
-            {"strike": [], "bid": [], "ask": [], "option_type": []}
-        )
+        chain = pd.DataFrame({"strike": [], "bid": [], "ask": [], "option_type": []})
         assert _max_spread_pct(chain, self._SPOT) == config.MAX_SPREAD_PCT
 
     def test_fallback_zero_mid(self) -> None:
@@ -301,15 +316,13 @@ class TestWingWidthPct:
     def test_fallback_empty_chain(self) -> None:
         chain = pd.DataFrame({"strike": [], "option_type": []})
         assert (
-            _wing_width_pct(chain, spot=100.0)
-            == config.BACKSPREAD_MIN_WING_WIDTH_PCT
+            _wing_width_pct(chain, spot=100.0) == config.BACKSPREAD_MIN_WING_WIDTH_PCT
         )
 
     def test_fallback_single_strike(self) -> None:
         chain = self._chain([100.0])
         assert (
-            _wing_width_pct(chain, spot=100.0)
-            == config.BACKSPREAD_MIN_WING_WIDTH_PCT
+            _wing_width_pct(chain, spot=100.0) == config.BACKSPREAD_MIN_WING_WIDTH_PCT
         )
 
 
@@ -319,42 +332,32 @@ class TestWingWidthPct:
 class TestGexLargeAbs:
     """Tests for _gex_large_abs(ticker)."""
 
-    def test_half_pct_of_market_cap(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_half_pct_of_market_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "event_vol_analysis.calibration.yf.Ticker",
             lambda t: _MockTicker({"marketCap": 2e12}),
         )
         assert _gex_large_abs("AAPL") == pytest.approx(2e12 * 0.005)
 
-    def test_fallback_missing_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fallback_missing_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "event_vol_analysis.calibration.yf.Ticker",
             lambda t: _MockTicker({}),
         )
         assert _gex_large_abs("AAPL") == config.GEX_LARGE_ABS
 
-    def test_fallback_zero_market_cap(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fallback_zero_market_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "event_vol_analysis.calibration.yf.Ticker",
             lambda t: _MockTicker({"marketCap": 0}),
         )
         assert _gex_large_abs("AAPL") == config.GEX_LARGE_ABS
 
-    def test_fallback_on_exception(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fallback_on_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _bad(t: str) -> None:
             raise RuntimeError("timeout")
 
-        monkeypatch.setattr(
-            "event_vol_analysis.calibration.yf.Ticker", _bad
-        )
+        monkeypatch.setattr("event_vol_analysis.calibration.yf.Ticker", _bad)
         assert _gex_large_abs("AAPL") == config.GEX_LARGE_ABS
 
 
@@ -373,36 +376,26 @@ class TestCalibrateTickerParams:
     }
 
     @pytest.fixture()
-    def chain_and_mock(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> pd.DataFrame:
+    def chain_and_mock(self, monkeypatch: pytest.MonkeyPatch) -> pd.DataFrame:
         monkeypatch.setattr(
             "event_vol_analysis.calibration.yf.Ticker",
             lambda t: _MockTicker({"marketCap": 1e12}),
         )
         return _make_raw_chain(spot=self._SPOT)
 
-    def test_returns_all_required_keys(
-        self, chain_and_mock: pd.DataFrame
-    ) -> None:
+    def test_returns_all_required_keys(self, chain_and_mock: pd.DataFrame) -> None:
         result = calibrate_ticker_params("TEST", chain_and_mock, self._SPOT)
         assert set(result.keys()) == self._REQUIRED_KEYS
 
-    def test_min_oi_in_valid_range(
-        self, chain_and_mock: pd.DataFrame
-    ) -> None:
+    def test_min_oi_in_valid_range(self, chain_and_mock: pd.DataFrame) -> None:
         result = calibrate_ticker_params("TEST", chain_and_mock, self._SPOT)
         assert 10 <= result["min_oi"] <= 200
 
-    def test_max_spread_pct_in_valid_range(
-        self, chain_and_mock: pd.DataFrame
-    ) -> None:
+    def test_max_spread_pct_in_valid_range(self, chain_and_mock: pd.DataFrame) -> None:
         result = calibrate_ticker_params("TEST", chain_and_mock, self._SPOT)
         assert 0.03 <= result["max_spread_pct"] <= 0.20
 
-    def test_wing_width_pct_in_valid_range(
-        self, chain_and_mock: pd.DataFrame
-    ) -> None:
+    def test_wing_width_pct_in_valid_range(self, chain_and_mock: pd.DataFrame) -> None:
         result = calibrate_ticker_params("TEST", chain_and_mock, self._SPOT)
         assert 0.005 <= result["backspread_min_wing_width_pct"] <= 0.05
 
@@ -416,9 +409,7 @@ class TestCalibrateTickerParams:
         result = calibrate_ticker_params("TEST", chain_and_mock, self._SPOT)
         assert isinstance(result["min_oi"], int)
 
-    def test_all_fallback_on_empty_chain(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_all_fallback_on_empty_chain(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "event_vol_analysis.calibration.yf.Ticker",
             lambda t: _MockTicker({}),
@@ -489,9 +480,7 @@ class TestCalibrateIvScenarios:
         assert config.IV_SCENARIOS["expansion"]["front"] == pytest.approx(
             0.05, abs=1e-4
         )
-        assert config.IV_SCENARIOS["expansion"]["back"] == pytest.approx(
-            0.03, abs=1e-4
-        )
+        assert config.IV_SCENARIOS["expansion"]["back"] == pytest.approx(0.03, abs=1e-4)
 
     def test_hard_crush_front_always_nonpositive(self) -> None:
         for evr in [0.0, 0.3, 0.6, 1.0]:
@@ -538,9 +527,7 @@ class TestCalibrateIvScenarios:
 
         calibrate_iv_scenarios(0.50, 0.30, 0.5)
         expected = math.sqrt(0.5) - 1.0
-        assert IV_SCENARIOS["hard_crush"]["front"] == pytest.approx(
-            expected, abs=1e-4
-        )
+        assert IV_SCENARIOS["hard_crush"]["front"] == pytest.approx(expected, abs=1e-4)
 
 
 # ── TestDivYieldPropagation ──────────────────────────────────────────────────
@@ -585,9 +572,7 @@ class TestDivYieldPropagation:
     _SPOT = 100.0
     _T = 30 / 365.0
 
-    def test_skew_metrics_uses_div_yield(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_skew_metrics_uses_div_yield(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import event_vol_analysis.analytics.skew as skew_mod
         from event_vol_analysis.analytics.bsm import delta as real_delta
 
@@ -604,9 +589,9 @@ class TestDivYieldPropagation:
         chain = _make_minimal_chain(self._SPOT)
         skew_metrics(chain, self._SPOT, self._T, div_yield=0.07)
         assert recorded_q, "option_delta was never called"
-        assert all(q == pytest.approx(0.07) for q in recorded_q), (
-            "div_yield not forwarded to option_delta"
-        )
+        assert all(
+            q == pytest.approx(0.07) for q in recorded_q
+        ), "div_yield not forwarded to option_delta"
 
     def test_gex_summary_uses_div_yield(self) -> None:
         from event_vol_analysis.analytics.gamma import gex_summary
@@ -615,8 +600,7 @@ class TestDivYieldPropagation:
         r0 = gex_summary(chain, self._SPOT, self._T, div_yield=0.0)
         r5 = gex_summary(chain, self._SPOT, self._T, div_yield=0.05)
         assert (
-            r0["net_gex"] != r5["net_gex"]
-            or r0["abs_gex"] != r5["abs_gex"]
+            r0["net_gex"] != r5["net_gex"] or r0["abs_gex"] != r5["abs_gex"]
         ), "gex_summary did not propagate div_yield to BSM gamma"
 
     def test_strategy_pnl_vec_uses_div_yield(self) -> None:
@@ -657,9 +641,9 @@ class TestDivYieldPropagation:
         )
         pnl0 = strategy_pnl_vec(**kwargs, div_yield=0.0)
         pnl5 = strategy_pnl_vec(**kwargs, div_yield=0.05)
-        assert not np.allclose(pnl0.mean(), pnl5.mean()), (
-            "strategy_pnl_vec did not propagate div_yield to BSM pricing"
-        )
+        assert not np.allclose(
+            pnl0.mean(), pnl5.mean()
+        ), "strategy_pnl_vec did not propagate div_yield to BSM pricing"
 
 
 # ── TestBackspreadWingWidthPct ───────────────────────────────────────────────

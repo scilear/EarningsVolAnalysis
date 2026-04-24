@@ -36,7 +36,6 @@ from event_vol_analysis.strategies.post_event_calendar import (
     build_post_event_calendar,
 )
 
-
 # ── Entry-condition gates ──────────────────────────────────────────────────
 
 STRATEGY_CONDITIONS: dict[str, Callable[[dict[str, Any]], bool]] = {

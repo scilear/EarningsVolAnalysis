@@ -13,7 +13,6 @@ from event_vol_analysis.data.loader import (
     select_front_expiry,
 )
 
-
 # ── TestGetDividendYield ────────────────────────────────────────────────────
 
 

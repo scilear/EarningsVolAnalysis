@@ -12,7 +12,6 @@ import yfinance as yf
 
 from data.option_data_store import create_store
 
-
 DEFAULT_DB_PATH = Path("data/options_intraday.db")
 ALLOWED_PHASE1 = {
     "HELD_REPRICING",

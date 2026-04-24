@@ -35,7 +35,6 @@ from event_vol_analysis.strategies.calendar import (
 )
 from event_vol_analysis.strategies.registry import should_build_strategy
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
@@ -51,17 +50,19 @@ def _make_chain(
     rows = []
     for s in strikes:
         for ot in ("call", "put"):
-            rows.append({
-                "strike": s,
-                "option_type": ot,
-                "expiry": pd.Timestamp(expiry),
-                "impliedVolatility": 0.50,
-                "bid": 1.00,
-                "ask": 1.10,
-                "mid": 1.05,
-                "spread": 0.10,
-                "openInterest": 500,
-            })
+            rows.append(
+                {
+                    "strike": s,
+                    "option_type": ot,
+                    "expiry": pd.Timestamp(expiry),
+                    "impliedVolatility": 0.50,
+                    "bid": 1.00,
+                    "ask": 1.10,
+                    "mid": 1.05,
+                    "spread": 0.10,
+                    "openInterest": 500,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -74,16 +75,16 @@ class TestBackspreadFavorable:
     def test_call_backspread_qualifies(self) -> None:
         """should_build_strategy passes for CALL_BACKSPREAD."""
         snap = generate_scenario("backspread_favorable")
-        assert should_build_strategy("CALL_BACKSPREAD", snap), (
-            "Expected CALL_BACKSPREAD to qualify in backspread_favorable"
-        )
+        assert should_build_strategy(
+            "CALL_BACKSPREAD", snap
+        ), "Expected CALL_BACKSPREAD to qualify in backspread_favorable"
 
     def test_put_backspread_qualifies(self) -> None:
         """should_build_strategy passes for PUT_BACKSPREAD."""
         snap = generate_scenario("backspread_favorable")
-        assert should_build_strategy("PUT_BACKSPREAD", snap), (
-            "Expected PUT_BACKSPREAD to qualify in backspread_favorable"
-        )
+        assert should_build_strategy(
+            "PUT_BACKSPREAD", snap
+        ), "Expected PUT_BACKSPREAD to qualify in backspread_favorable"
 
     def test_conditions_met_directly(self) -> None:
         """backspread_conditions_met returns True for favorable snapshot."""
@@ -178,11 +179,12 @@ class TestRegistryStructuralInvariant:
             STRATEGY_CONDITIONS,
             STRATEGY_BUILDERS,
         )
+
         conditions_keys = set(STRATEGY_CONDITIONS.keys())
         builders_keys = set(STRATEGY_BUILDERS.keys())
-        assert conditions_keys == builders_keys, (
-            f"Registry keys mismatch: {conditions_keys ^ builders_keys}"
-        )
+        assert (
+            conditions_keys == builders_keys
+        ), f"Registry keys mismatch: {conditions_keys ^ builders_keys}"
 
     def test_registry_module_assert_fires(self) -> None:
         """Manually trigger the assert logic with mismatched test dicts."""
@@ -235,7 +237,7 @@ class TestCalendarAbsTermSpread:
         snap: dict[str, Any] = {
             "days_after_event": 0,
             "front_dte": 35,
-            "back_dte": 7,   # abs(7 - 35) = 28 >= 14 ✓
+            "back_dte": 7,  # abs(7 - 35) = 28 >= 14 ✓
         }
         assert calendar_conditions_met(snap)
 
@@ -317,6 +319,7 @@ class TestDteWindowConstants:
             BACKSPREAD_LONG_DTE_MIN,
             BACKSPREAD_LONG_DTE_MAX,
         )
+
         assert BACKSPREAD_LONG_DTE_MIN == BACK3_DTE_MIN
         assert BACKSPREAD_LONG_DTE_MAX == BACK3_DTE_MAX
 
@@ -335,9 +338,7 @@ class TestDteWindowConstants:
         # Expiry at 60 DTE → too far
         too_far = today + dt.timedelta(days=60)
 
-        result = _select_back3_expiry(
-            [too_close, good, too_far], back2, today
-        )
+        result = _select_back3_expiry([too_close, good, too_far], back2, today)
         assert result == good
 
     def test_loader_returns_none_when_no_back3(self) -> None:

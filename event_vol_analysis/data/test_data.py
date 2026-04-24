@@ -159,8 +159,7 @@ TEST_SCENARIOS = {
         "net_gex_bias": 0.1,
         "event_vol_premium": 0.05,
         "description": (
-            "Low event IV premium: iv_ratio 1.08 fails "
-            "backspread entry conditions"
+            "Low event IV premium: iv_ratio 1.08 fails " "backspread entry conditions"
         ),
     },
     "backspread_overpriced": {
@@ -215,8 +214,7 @@ TEST_SCENARIOS = {
         "net_gex_bias": 0.1,
         "event_vol_premium": 0.06,
         "description": (
-            "High-dividend mature name — low vol, "
-            "backspread gate expected to fail"
+            "High-dividend mature name — low vol, " "backspread gate expected to fail"
         ),
     },
     "mega_cap_tight": {
@@ -231,8 +229,7 @@ TEST_SCENARIOS = {
         "net_gex_bias": 0.0,
         "event_vol_premium": 0.04,
         "description": (
-            "Mega-cap liquid name — tight spreads, "
-            "calibration floor clamping"
+            "Mega-cap liquid name — tight spreads, " "calibration floor clamping"
         ),
         "_chain_override": {
             "spread_multiplier": 0.5,
@@ -250,8 +247,7 @@ TEST_SCENARIOS = {
         "net_gex_bias": -0.2,
         "event_vol_premium": 0.25,
         "description": (
-            "Small-cap sparse chain — wide spreads, "
-            "calibration ceiling clamping"
+            "Small-cap sparse chain — wide spreads, " "calibration ceiling clamping"
         ),
         "_chain_override": {
             "num_strikes": 13,
@@ -269,8 +265,7 @@ TEST_SCENARIOS = {
         "net_gex_bias": -0.3,
         "event_vol_premium": 0.35,
         "description": (
-            "High iv_ratio backspread opportunity — "
-            "both backspreads expected"
+            "High iv_ratio backspread opportunity — " "both backspreads expected"
         ),
     },
     "distressed_deep_skew": {
@@ -281,10 +276,7 @@ TEST_SCENARIOS = {
         "term_structure_slope": -0.03,
         "net_gex_bias": -0.5,
         "event_vol_premium": 0.15,
-        "description": (
-            "Distressed name — heavy put skew, "
-            "inverted term structure"
-        ),
+        "description": ("Distressed name — heavy put skew, " "inverted term structure"),
     },
     "minimal_history": {
         # Only 3 quarters of earnings history.
@@ -296,8 +288,7 @@ TEST_SCENARIOS = {
         "net_gex_bias": 0.0,
         "event_vol_premium": 0.10,
         "description": (
-            "Ticker with only 3 earnings quarters of history — "
-            "sparse history guard"
+            "Ticker with only 3 earnings quarters of history — " "sparse history guard"
         ),
         "_chain_override": {
             "earnings_quarters": 3,
@@ -339,10 +330,9 @@ def generate_option_chain(
     # Generate strikes centered around spot
     center_strike = round(spot / strike_step) * strike_step
     half_strikes = num_strikes // 2
-    strikes = np.array([
-        center_strike + (i - half_strikes) * strike_step
-        for i in range(num_strikes)
-    ])
+    strikes = np.array(
+        [center_strike + (i - half_strikes) * strike_step for i in range(num_strikes)]
+    )
 
     # Calculate actual time to expiry (not hardcoded 30 days)
     today = dt.date.today()
@@ -393,17 +383,19 @@ def generate_option_chain(
             open_interest = int(oi_base * oi_multiplier * oi_noise)
             open_interest = max(10, open_interest)  # Minimum OI
 
-            rows.append({
-                "strike": strike,
-                "bid": round(bid, 4),
-                "ask": round(ask, 4),
-                "mid": round(mid, 4),
-                "spread": round(spread, 4),
-                "impliedVolatility": round(iv, 4),
-                "openInterest": open_interest,
-                "option_type": opt_type,
-                "expiry": pd.Timestamp(expiry),
-            })
+            rows.append(
+                {
+                    "strike": strike,
+                    "bid": round(bid, 4),
+                    "ask": round(ask, 4),
+                    "mid": round(mid, 4),
+                    "spread": round(spread, 4),
+                    "impliedVolatility": round(iv, 4),
+                    "openInterest": open_interest,
+                    "option_type": opt_type,
+                    "expiry": pd.Timestamp(expiry),
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -427,7 +419,7 @@ def _bsm_price(
             return max(0.0, spot - strike)
         return max(0.0, strike - spot)
 
-    d1 = (np.log(spot / strike) + (r + 0.5 * iv ** 2) * t) / (iv * np.sqrt(t))
+    d1 = (np.log(spot / strike) + (r + 0.5 * iv**2) * t) / (iv * np.sqrt(t))
     d2 = d1 - iv * np.sqrt(t)
 
     if option_type == "call":
@@ -464,7 +456,9 @@ def generate_test_data_set(
         raise ValueError(f"Unknown scenario: {scenario}. Valid: {list(TEST_SCENARIOS)}")
 
     params = TEST_SCENARIOS[scenario]
-    LOGGER.info("Generating test data with scenario '%s': %s", scenario, params["description"])
+    LOGGER.info(
+        "Generating test data with scenario '%s': %s", scenario, params["description"]
+    )
 
     # Default dates — post-event scenarios place event_date
     # in the past so that days_after_event > 0 in the pipeline.
@@ -499,7 +493,7 @@ def generate_test_data_set(
     front_chain = generate_option_chain(
         expiry=front_expiry,
         base_iv=params["base_iv"] + params["event_vol_premium"],
-        **chain_params
+        **chain_params,
     )
 
     # Generate back chain with term structure slope
@@ -522,9 +516,7 @@ def generate_test_data_set(
 
     # Generate price history with spikes aligned to earnings dates
     history = _generate_price_history(
-        spot, years=config.HISTORY_YEARS,
-        earnings_dates=earnings_dates,
-        seed=seed
+        spot, years=config.HISTORY_YEARS, earnings_dates=earnings_dates, seed=seed
     )
 
     return {
@@ -581,10 +573,12 @@ def _generate_price_history(
 
     prices = spot * np.cumprod(1 + returns)
 
-    return pd.DataFrame({
-        "Date": dates,
-        "Close": prices,
-    })
+    return pd.DataFrame(
+        {
+            "Date": dates,
+            "Close": prices,
+        }
+    )
 
 
 def _generate_earnings_dates(
@@ -624,15 +618,9 @@ def save_test_data(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save chains as CSV
-    data["front_chain"].to_csv(
-        output_dir / f"{name}_front_chain.csv", index=False
-    )
-    data["back_chain"].to_csv(
-        output_dir / f"{name}_back_chain.csv", index=False
-    )
-    data["history"].to_csv(
-        output_dir / f"{name}_history.csv", index=False
-    )
+    data["front_chain"].to_csv(output_dir / f"{name}_front_chain.csv", index=False)
+    data["back_chain"].to_csv(output_dir / f"{name}_back_chain.csv", index=False)
+    data["history"].to_csv(output_dir / f"{name}_history.csv", index=False)
 
     # Save metadata
     metadata = {
@@ -672,18 +660,20 @@ def load_test_data(
     back_chain = pd.read_csv(
         input_dir / f"{name}_back_chain.csv", parse_dates=["expiry"]
     )
-    history = pd.read_csv(
-        input_dir / f"{name}_history.csv", parse_dates=["Date"]
-    )
+    history = pd.read_csv(input_dir / f"{name}_history.csv", parse_dates=["Date"])
 
-    metadata = pd.read_json(
-        input_dir / f"{name}_metadata.json", orient="records"
-    ).iloc[0].to_dict()
+    metadata = (
+        pd.read_json(input_dir / f"{name}_metadata.json", orient="records")
+        .iloc[0]
+        .to_dict()
+    )
 
     return {
         "spot": metadata["spot"],
         "event_date": dt.datetime.strptime(metadata["event_date"], "%Y-%m-%d").date(),
-        "front_expiry": dt.datetime.strptime(metadata["front_expiry"], "%Y-%m-%d").date(),
+        "front_expiry": dt.datetime.strptime(
+            metadata["front_expiry"], "%Y-%m-%d"
+        ).date(),
         "back_expiry": dt.datetime.strptime(metadata["back_expiry"], "%Y-%m-%d").date(),
         "front_chain": front_chain,
         "back_chain": back_chain,
@@ -965,7 +955,5 @@ def generate_scenario(name: str) -> dict:
     """
     if name not in _SNAPSHOT_SCENARIOS:
         valid = list(_SNAPSHOT_SCENARIOS.keys())
-        raise KeyError(
-            f"Unknown scenario: {name!r}. Valid names: {valid}"
-        )
+        raise KeyError(f"Unknown scenario: {name!r}. Valid names: {valid}")
     return dict(_SNAPSHOT_SCENARIOS[name])

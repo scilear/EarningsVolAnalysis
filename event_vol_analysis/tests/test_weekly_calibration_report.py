@@ -124,9 +124,7 @@ def test_edge_ratio_accuracy_cheap_bucket(tmp_path: Path) -> None:
 
     report = run_calibration_report(db_path=db_path, output_dir=tmp_path)
     assert report.edge_ratio_accuracy["CHEAP"]["n"] == 5
-    assert report.edge_ratio_accuracy["CHEAP"]["accuracy"] == pytest.approx(
-        0.6
-    )
+    assert report.edge_ratio_accuracy["CHEAP"]["accuracy"] == pytest.approx(0.6)
 
 
 def test_type_accuracy_type1(tmp_path: Path) -> None:

@@ -22,16 +22,11 @@ def filter_by_liquidity(
     """Filter by open interest and spread percentage."""
     chain = chain.copy()
     chain["spread_pct"] = chain["spread"] / chain["mid"].replace(0.0, pd.NA)
-    mask = (
-        (chain["openInterest"] >= min_oi)
-        & (chain["spread_pct"] <= max_spread_pct)
-    )
+    mask = (chain["openInterest"] >= min_oi) & (chain["spread_pct"] <= max_spread_pct)
     return chain.loc[mask].dropna(subset=["spread_pct"]).copy()
 
 
-def execution_price(
-    mid: float, spread: float, side: str, slippage_pct: float
-) -> float:
+def execution_price(mid: float, spread: float, side: str, slippage_pct: float) -> float:
     """Return execution price adjusted by slippage.
 
     Slippage crosses slippage_pct of half-spread.

@@ -111,7 +111,6 @@ from event_vol_analysis.viz.plots import (
     plot_pnl_distribution,
 )
 
-
 LOGGER = logging.getLogger(__name__)
 
 STRATEGY_RATIONALE: dict[str, str] = {
@@ -1560,8 +1559,7 @@ def main() -> None:
     short_vol_evidence = _short_vol_evidence_gate(ticker)
     if not short_vol_evidence["allowed"]:
         evidence_reason = (
-            "short-vol evidence gate failed: "
-            f"{short_vol_evidence['note']}"
+            "short-vol evidence gate failed: " f"{short_vol_evidence['note']}"
         )
         not_applicable.extend(
             [
@@ -2035,9 +2033,7 @@ def main() -> None:
             "regime": regime.get("composite_regime"),
             "top_structure": None if trust_gate_failed else top.get("name"),
             "score": (
-                None
-                if trust_gate_failed
-                else round(float(top.get("score", 0.0)), 4)
+                None if trust_gate_failed else round(float(top.get("score", 0.0)), 4)
             ),
             "move_model": args.move_model,
             "implied_move": snapshot.get("implied_move"),
@@ -2399,8 +2395,7 @@ def _lookup_event_time_label(ticker: str, event_date: dt.date) -> str | None:
         if registry.empty:
             return None
         mask = (
-            registry["underlying_symbol"].astype(str).str.upper()
-            == ticker.upper()
+            registry["underlying_symbol"].astype(str).str.upper() == ticker.upper()
         ) & (registry["event_date"] == event_date)
         exact = registry[mask]
         if exact.empty:

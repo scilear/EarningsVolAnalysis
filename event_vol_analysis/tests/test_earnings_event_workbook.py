@@ -94,7 +94,9 @@ def test_build_workbook_summary_returns_coverage_and_sections(tmp_path: Path) ->
     db_path = tmp_path / "earnings.db"
     _seed_event_sample(db_path)
 
-    summary = build_workbook_summary(WorkbookConfig(db_path=str(db_path), ticker="NVDA"))
+    summary = build_workbook_summary(
+        WorkbookConfig(db_path=str(db_path), ticker="NVDA")
+    )
 
     assert summary["coverage"]["events"] == 1
     assert summary["coverage"]["outcomes"] == 1

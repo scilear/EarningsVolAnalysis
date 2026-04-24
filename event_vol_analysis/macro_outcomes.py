@@ -12,7 +12,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_MACRO_OUTCOMES_DIR = Path("data/macro_event_outcomes")
 ALLOWED_EVENT_TYPES = {
     "geopolitical",
@@ -151,16 +150,11 @@ def query_event_type_tail_rate(
         records = [
             record
             for record in records
-            if (
-                record.vix_quartile is not None
-                and record.vix_quartile == quartile
-            )
+            if (record.vix_quartile is not None and record.vix_quartile == quartile)
         ]
 
     tail_events = [
-        record
-        for record in records
-        if float(record.move_vs_implied_ratio) > threshold
+        record for record in records if float(record.move_vs_implied_ratio) > threshold
     ]
     total_events = len(records)
     tail_count = len(tail_events)
@@ -171,11 +165,7 @@ def query_event_type_tail_rate(
         "vix_quartile": quartile,
         "tail_event_count": tail_count,
         "total_events": total_events,
-        "tail_rate": (
-            float(tail_count / total_events)
-            if total_events > 0
-            else 0.0
-        ),
+        "tail_rate": (float(tail_count / total_events) if total_events > 0 else 0.0),
         "has_min_2_tail_events": tail_count >= 2,
     }
 

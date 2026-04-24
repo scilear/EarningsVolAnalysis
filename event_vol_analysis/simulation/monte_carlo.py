@@ -14,7 +14,6 @@ from event_vol_analysis.config import (
     MOVE_MODELS,
 )
 
-
 LOGGER = logging.getLogger(__name__)
 
 

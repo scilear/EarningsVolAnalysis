@@ -29,7 +29,6 @@ from event_vol_analysis.strategies.post_event_calendar import (
 )
 from event_vol_analysis.strategies.registry import should_build_strategy
 
-
 # ── Criterion 4: post_event_entry → only POST_EVENT_CALENDAR qualifies ─────
 
 
@@ -80,17 +79,20 @@ class TestPostEventFlat:
 class TestPreEarningsNoPostEventCalendar:
     """Pre-event scenarios have days_after_event==0; gate rejects them."""
 
-    @pytest.mark.parametrize("scenario", [
-        "backspread_favorable",
-        "backspread_unfavorable",
-        "backspread_overpriced",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "backspread_favorable",
+            "backspread_unfavorable",
+            "backspread_overpriced",
+        ],
+    )
     def test_pre_earnings_excluded(self, scenario: str) -> None:
         """POST_EVENT_CALENDAR absent in pre-earnings scenario."""
         snap = generate_scenario(scenario)
-        assert not should_build_strategy("POST_EVENT_CALENDAR", snap), (
-            f"POST_EVENT_CALENDAR should not qualify in {scenario!r}"
-        )
+        assert not should_build_strategy(
+            "POST_EVENT_CALENDAR", snap
+        ), f"POST_EVENT_CALENDAR should not qualify in {scenario!r}"
 
 
 # ── Criterion 9: iv_short removed from signature ──────────────────────────
@@ -111,12 +113,12 @@ class TestIvShortNotInSignature:
             # iv_short was removed in v5.  Passing it as a kwarg always
             # raises TypeError regardless of positional arity.
             compute_post_event_calendar_scenarios(
-                195.0,    # spot
-                195.0,    # K
+                195.0,  # spot
+                195.0,  # K
                 3 / 365,  # t_short
                 25 / 365,  # t_long
-                0.46,     # iv_long
-                4.50,     # net_cost
+                0.46,  # iv_long
+                4.50,  # net_cost
                 iv_short=0.55,  # must not exist → TypeError
             )
 
@@ -171,27 +173,38 @@ class TestScenarioEvDeterminism:
         ev_a = compute_post_event_calendar_scenarios(**params)
         ev_b = compute_post_event_calendar_scenarios(**params)
         for scenario in ev_a:
-            assert ev_a[scenario] == ev_b[scenario], (
-                f"Non-deterministic: {scenario}"
-            )
+            assert ev_a[scenario] == ev_b[scenario], f"Non-deterministic: {scenario}"
 
     def test_scenario_returns_expected_keys(self) -> None:
         """compute_post_event_calendar_scenarios returns all five scenarios."""
         result = compute_post_event_calendar_scenarios(
-            spot=195.0, K=195.0, t_short=3 / 365, t_long=25 / 365,
-            iv_long=0.46, net_cost=4.50,
+            spot=195.0,
+            K=195.0,
+            t_short=3 / 365,
+            t_long=25 / 365,
+            iv_long=0.46,
+            net_cost=4.50,
         )
         expected_keys = {
-            "flat", "up_5pct", "down_5pct", "up_10pct", "down_10pct",
+            "flat",
+            "up_5pct",
+            "down_5pct",
+            "up_10pct",
+            "down_10pct",
         }
         assert set(result.keys()) == expected_keys
 
     def test_scenario_values_are_finite_floats(self) -> None:
         """All scenario P&Ls are finite floats (no inf, no None)."""
         import math
+
         result = compute_post_event_calendar_scenarios(
-            spot=195.0, K=195.0, t_short=3 / 365, t_long=25 / 365,
-            iv_long=0.46, net_cost=4.50,
+            spot=195.0,
+            K=195.0,
+            t_short=3 / 365,
+            t_long=25 / 365,
+            iv_long=0.46,
+            net_cost=4.50,
         )
         for key, val in result.items():
             assert val is not None, f"{key} is None"
@@ -226,9 +239,7 @@ class TestPostEventCalendarAlignment:
             "cvar": -1.0,
         }
 
-    def _population_for_strategy(
-        self, strategy: dict[str, Any]
-    ) -> dict:
+    def _population_for_strategy(self, strategy: dict[str, Any]) -> dict:
         """Population stats placing POST_EVENT_CALENDAR at 50th percentile.
 
         For the tail_score in Tail-Underpriced regimes to be 0.50, the
@@ -242,23 +253,24 @@ class TestPostEventCalendarAlignment:
         For convexity in a Mixed regime, score is hardcoded to 0.5.
         """
         return {
-            "median_abs_gamma": 1.0,   # non-zero; vega/gamma stay 0.5
+            "median_abs_gamma": 1.0,  # non-zero; vega/gamma stay 0.5
             "median_abs_vega": 1.0,
             "convexities": [0.5, 0.8, strategy["convexity"], 1.5, 2.0],
             # 2 values worse (more negative) than -1.0, 2 values better
             "cvars": [-2.0, -1.5, -0.5, -0.2],
         }
 
-    @pytest.mark.parametrize("scenario_name", [
-        "backspread_favorable",
-        "backspread_unfavorable",
-        "backspread_overpriced",
-        "post_event_entry",
-        "post_event_flat",
-    ])
-    def test_alignment_is_half_in_regime(
-        self, scenario_name: str
-    ) -> None:
+    @pytest.mark.parametrize(
+        "scenario_name",
+        [
+            "backspread_favorable",
+            "backspread_unfavorable",
+            "backspread_overpriced",
+            "post_event_entry",
+            "post_event_flat",
+        ],
+    )
+    def test_alignment_is_half_in_regime(self, scenario_name: str) -> None:
         """POST_EVENT_CALENDAR alignment == 0.50 for scenario regime."""
         snap = generate_scenario(scenario_name)
         regime = classify_regime(snap)

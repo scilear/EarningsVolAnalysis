@@ -9,9 +9,7 @@ from event_vol_analysis.strategies.payoff import _post_iv
 def test_iv_scenarios_config() -> None:
     for name, cfg in IV_SCENARIOS.items():
         assert isinstance(cfg, dict), f"{name} must be a dict"
-        assert "front" in cfg and "back" in cfg, (
-            f"{name} missing front/back keys"
-        )
+        assert "front" in cfg and "back" in cfg, f"{name} missing front/back keys"
 
 
 def test_post_iv_runtime_path() -> None:

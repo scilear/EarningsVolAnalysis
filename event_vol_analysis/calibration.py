@@ -26,7 +26,6 @@ import yfinance as yf
 
 from event_vol_analysis import config
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -126,7 +125,7 @@ def calibrate_iv_scenarios(
     """
     evr = max(0.0, min(1.0, event_variance_ratio))
 
-    hard_crush_front = math.sqrt(1.0 - evr) - 1.0   # always ≤ 0
+    hard_crush_front = math.sqrt(1.0 - evr) - 1.0  # always ≤ 0
     hard_crush_back = -max(0.03, evr * 0.12)
 
     expansion_front = 0.05 + (1.0 - evr) * 0.08
@@ -155,9 +154,7 @@ def calibrate_iv_scenarios(
 # ── Private helpers ───────────────────────────────────────────────────────────
 
 
-def _atm_region(
-    chain: pd.DataFrame, spot: float, width: float = 0.15
-) -> pd.DataFrame:
+def _atm_region(chain: pd.DataFrame, spot: float, width: float = 0.15) -> pd.DataFrame:
     """Return rows where strike is within ±*width* fraction of *spot*."""
     lo = spot * (1.0 - width)
     hi = spot * (1.0 + width)
@@ -207,9 +204,7 @@ def _max_spread_pct(chain: pd.DataFrame, spot: float) -> float:
     if region.empty:
         return config.MAX_SPREAD_PCT
     mid = (region["bid"].fillna(0.0) + region["ask"].fillna(0.0)) / 2.0
-    spread = (
-        region["ask"].fillna(0.0) - region["bid"].fillna(0.0)
-    ).clip(lower=0.0)
+    spread = (region["ask"].fillna(0.0) - region["bid"].fillna(0.0)).clip(lower=0.0)
     valid = mid > 0.0
     if not valid.any():
         return config.MAX_SPREAD_PCT

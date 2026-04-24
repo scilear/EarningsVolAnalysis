@@ -19,7 +19,6 @@ from event_vol_analysis.strategies.payoff_map import (
 )
 from event_vol_analysis.strategies.structures import OptionLeg, Strategy
 
-
 OPTION_CHAIN_TOOL_PATH = Path(
     "/home/fabien/Documents/OptionTrader/tools/option_chain.py"
 )

@@ -32,7 +32,6 @@ from event_vol_analysis.config import (
 )
 from event_vol_analysis.strategies.structures import OptionLeg, Strategy
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -105,9 +104,7 @@ def build_calendar(
     back_expiry = pd.Timestamp(back_chain["expiry"].iloc[0])
 
     # Use abs() so inverted term structures are handled correctly (v5 fix).
-    term_spread_days = abs(
-        (back_expiry.date() - front_expiry.date()).days
-    )
+    term_spread_days = abs((back_expiry.date() - front_expiry.date()).days)
     LOGGER.debug(
         "Calendar term spread: %d days (%s preferred, %s fallback)",
         term_spread_days,
@@ -120,9 +117,7 @@ def build_calendar(
         if back_type == "back3"
         else CALENDAR_BACK1_POST_EVENT_IV_FACTOR
     )
-    LOGGER.debug(
-        "Calendar IV factor for %s: %.2f", back_type, iv_factor
-    )
+    LOGGER.debug("Calendar IV factor for %s: %.2f", back_type, iv_factor)
 
     name = f"calendar_{back_type}"
     return Strategy(
@@ -165,9 +160,7 @@ def select_back_chain(
     if back3_chain is not None and not back3_chain.empty:
         return back3_chain, "back3"
     if back1_chain is not None and not back1_chain.empty:
-        LOGGER.info(
-            "Calendar: back3 unavailable, falling back to back1."
-        )
+        LOGGER.info("Calendar: back3 unavailable, falling back to back1.")
         return back1_chain, "back1"
     return None, ""
 

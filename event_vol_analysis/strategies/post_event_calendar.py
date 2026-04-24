@@ -26,7 +26,6 @@ from event_vol_analysis.config import (
 )
 from event_vol_analysis.strategies.structures import OptionLeg, Strategy
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -135,12 +134,22 @@ def build_post_event_calendar(
         Dict with pricing details and ``Strategy`` object.
     """
     short_premium = option_price(
-        spot, K, max(t_short, TIME_EPSILON),
-        RISK_FREE_RATE, div_yield, front_iv, "call",
+        spot,
+        K,
+        max(t_short, TIME_EPSILON),
+        RISK_FREE_RATE,
+        div_yield,
+        front_iv,
+        "call",
     )
     long_cost = option_price(
-        spot, K, max(t_long, TIME_EPSILON),
-        RISK_FREE_RATE, div_yield, back3_iv, "call",
+        spot,
+        K,
+        max(t_long, TIME_EPSILON),
+        RISK_FREE_RATE,
+        div_yield,
+        back3_iv,
+        "call",
     )
     net_cost = long_cost - short_premium
 
@@ -242,8 +251,13 @@ def compute_post_event_calendar_scenarios(
 
         # Long leg: BSM value with mild IV compression
         long_exit = option_price(
-            spot_t, K, t_remaining,
-            RISK_FREE_RATE, div_yield, compressed_iv, "call",
+            spot_t,
+            K,
+            t_remaining,
+            RISK_FREE_RATE,
+            div_yield,
+            compressed_iv,
+            "call",
         )
 
         pnl = long_exit - short_intrinsic - net_cost

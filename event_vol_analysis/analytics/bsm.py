@@ -22,7 +22,7 @@ def option_price(
     option_type: str,
 ) -> float:
     """Calculate Black-Scholes-Merton option price (scalar version).
-    
+
     Args:
         spot: Current underlying price
         strike: Option strike price
@@ -31,25 +31,29 @@ def option_price(
         q: Dividend yield
         iv: Implied volatility
         option_type: 'call' or 'put'
-    
+
     Returns:
         Option price
     """
     if t <= 0:
-        if option_type == 'call':
+        if option_type == "call":
             return max(spot - strike, 0.0)
-        elif option_type == 'put':
+        elif option_type == "put":
             return max(strike - spot, 0.0)
         else:
             raise ValueError("option_type must be 'call' or 'put'")
-    
-    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv ** 2) * t) / (iv * np.sqrt(t))
+
+    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv**2) * t) / (iv * np.sqrt(t))
     d2 = d1 - iv * np.sqrt(t)
-    
-    if option_type == 'call':
-        return spot * np.exp(-q * t) * norm.cdf(d1) - strike * np.exp(-r * t) * norm.cdf(d2)
-    elif option_type == 'put':
-        return strike * np.exp(-r * t) * norm.cdf(-d2) - spot * np.exp(-q * t) * norm.cdf(-d1)
+
+    if option_type == "call":
+        return spot * np.exp(-q * t) * norm.cdf(d1) - strike * np.exp(
+            -r * t
+        ) * norm.cdf(d2)
+    elif option_type == "put":
+        return strike * np.exp(-r * t) * norm.cdf(-d2) - spot * np.exp(
+            -q * t
+        ) * norm.cdf(-d1)
     else:
         raise ValueError("option_type must be 'call' or 'put'")
 
@@ -64,7 +68,7 @@ def option_price_vec(
     option_type: str,
 ) -> np.ndarray:
     """Vectorized Black-Scholes-Merton option pricing.
-    
+
     Args:
         spot_arr: Array of spot prices (shape: (N,))
         strike: Option strike price (scalar)
@@ -73,36 +77,34 @@ def option_price_vec(
         q: Dividend yield (scalar)
         iv: Implied volatility (scalar)
         option_type: 'call' or 'put'
-    
+
     Returns:
         Array of option prices (shape: (N,))
     """
     spot_arr = np.asarray(spot_arr, dtype=np.float64)
-    
+
     # Handle zero time to expiration
     if t <= 0:
-        if option_type == 'call':
+        if option_type == "call":
             return np.maximum(spot_arr - strike, 0.0)
-        elif option_type == 'put':
+        elif option_type == "put":
             return np.maximum(strike - spot_arr, 0.0)
         else:
             raise ValueError("option_type must be 'call' or 'put'")
-    
+
     # Vectorized BSM calculations
     sqrt_t = np.sqrt(t)
-    d1 = (np.log(spot_arr / strike) + (r - q + 0.5 * iv ** 2) * t) / (iv * sqrt_t)
+    d1 = (np.log(spot_arr / strike) + (r - q + 0.5 * iv**2) * t) / (iv * sqrt_t)
     d2 = d1 - iv * sqrt_t
-    
-    if option_type == 'call':
-        return (
-            spot_arr * np.exp(-q * t) * norm.cdf(d1) 
-            - strike * np.exp(-r * t) * norm.cdf(d2)
-        )
-    elif option_type == 'put':
-        return (
-            strike * np.exp(-r * t) * norm.cdf(-d2) 
-            - spot_arr * np.exp(-q * t) * norm.cdf(-d1)
-        )
+
+    if option_type == "call":
+        return spot_arr * np.exp(-q * t) * norm.cdf(d1) - strike * np.exp(
+            -r * t
+        ) * norm.cdf(d2)
+    elif option_type == "put":
+        return strike * np.exp(-r * t) * norm.cdf(-d2) - spot_arr * np.exp(
+            -q * t
+        ) * norm.cdf(-d1)
     else:
         raise ValueError("option_type must be 'call' or 'put'")
 
@@ -117,7 +119,7 @@ def delta(
     option_type: str,
 ) -> float:
     """Calculate Black-Scholes-Merton option delta (scalar version).
-    
+
     Args:
         spot: Current underlying price
         strike: Option strike price
@@ -126,23 +128,23 @@ def delta(
         q: Dividend yield
         iv: Implied volatility
         option_type: 'call' or 'put'
-    
+
     Returns:
         Option delta
     """
     if t <= 0:
-        if option_type == 'call':
+        if option_type == "call":
             return 1.0 if spot > strike else 0.0
-        elif option_type == 'put':
+        elif option_type == "put":
             return -1.0 if spot < strike else 0.0
         else:
             raise ValueError("option_type must be 'call' or 'put'")
-    
-    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv ** 2) * t) / (iv * np.sqrt(t))
-    
-    if option_type == 'call':
+
+    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv**2) * t) / (iv * np.sqrt(t))
+
+    if option_type == "call":
         return np.exp(-q * t) * norm.cdf(d1)
-    elif option_type == 'put':
+    elif option_type == "put":
         return -np.exp(-q * t) * norm.cdf(-d1)
     else:
         raise ValueError("option_type must be 'call' or 'put'")
@@ -158,7 +160,7 @@ def delta_vec(
     option_type: str,
 ) -> np.ndarray:
     """Vectorized Black-Scholes-Merton option delta.
-    
+
     Args:
         spot_arr: Array of spot prices (shape: (N,))
         strike: Option strike price (scalar)
@@ -167,28 +169,28 @@ def delta_vec(
         q: Dividend yield (scalar)
         iv: Implied volatility (scalar)
         option_type: 'call' or 'put'
-    
+
     Returns:
         Array of option deltas (shape: (N,))
     """
     spot_arr = np.asarray(spot_arr, dtype=np.float64)
-    
+
     # Handle zero time to expiration
     if t <= 0:
-        if option_type == 'call':
+        if option_type == "call":
             return np.where(spot_arr > strike, 1.0, 0.0)
-        elif option_type == 'put':
+        elif option_type == "put":
             return np.where(spot_arr < strike, -1.0, 0.0)
         else:
             raise ValueError("option_type must be 'call' or 'put'")
-    
+
     # Vectorized delta calculation
     sqrt_t = np.sqrt(t)
-    d1 = (np.log(spot_arr / strike) + (r - q + 0.5 * iv ** 2) * t) / (iv * sqrt_t)
-    
-    if option_type == 'call':
+    d1 = (np.log(spot_arr / strike) + (r - q + 0.5 * iv**2) * t) / (iv * sqrt_t)
+
+    if option_type == "call":
         return np.exp(-q * t) * norm.cdf(d1)
-    elif option_type == 'put':
+    elif option_type == "put":
         return -np.exp(-q * t) * norm.cdf(-d1)
     else:
         raise ValueError("option_type must be 'call' or 'put'")
@@ -204,7 +206,7 @@ def gamma(
     option_type: str,
 ) -> float:
     """Calculate Black-Scholes-Merton option gamma (scalar version).
-    
+
     Args:
         spot: Current underlying price
         strike: Option strike price
@@ -213,15 +215,15 @@ def gamma(
         q: Dividend yield
         iv: Implied volatility
         option_type: 'call' or 'put'
-    
+
     Returns:
         Option gamma
     """
     if t <= 0:
         return 0.0
-    
-    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv ** 2) * t) / (iv * np.sqrt(t))
-    
+
+    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv**2) * t) / (iv * np.sqrt(t))
+
     return np.exp(-q * t) * norm.pdf(d1) / (spot * iv * np.sqrt(t))
 
 
@@ -235,7 +237,7 @@ def gamma_vec(
     option_type: str,
 ) -> np.ndarray:
     """Vectorized Black-Scholes-Merton option gamma.
-    
+
     Args:
         spot_arr: Array of spot prices (shape: (N,))
         strike: Option strike price (scalar)
@@ -244,20 +246,20 @@ def gamma_vec(
         q: Dividend yield (scalar)
         iv: Implied volatility (scalar)
         option_type: 'call' or 'put'
-    
+
     Returns:
         Array of option gammas (shape: (N,))
     """
     spot_arr = np.asarray(spot_arr, dtype=np.float64)
-    
+
     # Handle zero time to expiration
     if t <= 0:
         return np.zeros_like(spot_arr)
-    
+
     # Vectorized gamma calculation
     sqrt_t = np.sqrt(t)
-    d1 = (np.log(spot_arr / strike) + (r - q + 0.5 * iv ** 2) * t) / (iv * sqrt_t)
-    
+    d1 = (np.log(spot_arr / strike) + (r - q + 0.5 * iv**2) * t) / (iv * sqrt_t)
+
     return np.exp(-q * t) * norm.pdf(d1) / (spot_arr * iv * sqrt_t)
 
 
@@ -290,10 +292,7 @@ def vega(
     """
     if t <= 0:
         return 0.0
-    d1 = (
-        (np.log(spot / strike) + (r - q + 0.5 * iv ** 2) * t)
-        / (iv * np.sqrt(t))
-    )
+    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv**2) * t) / (iv * np.sqrt(t))
     return float(spot * np.exp(-q * t) * norm.pdf(d1) * np.sqrt(t))
 
 
@@ -326,25 +325,19 @@ def theta(
     if t <= 0:
         return 0.0
     sqrt_t = np.sqrt(t)
-    d1 = (
-        (np.log(spot / strike) + (r - q + 0.5 * iv ** 2) * t)
-        / (iv * sqrt_t)
-    )
+    d1 = (np.log(spot / strike) + (r - q + 0.5 * iv**2) * t) / (iv * sqrt_t)
     d2 = d1 - iv * sqrt_t
 
     # Common decay term (same for calls and puts)
-    decay = (
-        -(spot * np.exp(-q * t) * norm.pdf(d1) * iv)
-        / (2.0 * sqrt_t)
-    )
+    decay = -(spot * np.exp(-q * t) * norm.pdf(d1) * iv) / (2.0 * sqrt_t)
 
-    if option_type == 'call':
+    if option_type == "call":
         raw = (
             decay
             - r * strike * np.exp(-r * t) * norm.cdf(d2)
             + q * spot * np.exp(-q * t) * norm.cdf(d1)
         )
-    elif option_type == 'put':
+    elif option_type == "put":
         raw = (
             decay
             + r * strike * np.exp(-r * t) * norm.cdf(-d2)

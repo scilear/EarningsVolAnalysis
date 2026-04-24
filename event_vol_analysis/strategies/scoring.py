@@ -152,12 +152,16 @@ def compute_metrics(
         "net_theta": net_greeks.get("theta", 0.0) if net_greeks else None,
         "lower_breakeven": breakevens.get("lower") if breakevens else None,
         "upper_breakeven": breakevens.get("upper") if breakevens else None,
-        "lower_be_pct": ((breakevens.get("lower") - spot) / spot * 100)
-        if breakevens and breakevens.get("lower")
-        else None,
-        "upper_be_pct": ((breakevens.get("upper") - spot) / spot * 100)
-        if breakevens and breakevens.get("upper")
-        else None,
+        "lower_be_pct": (
+            ((breakevens.get("lower") - spot) / spot * 100)
+            if breakevens and breakevens.get("lower")
+            else None
+        ),
+        "upper_be_pct": (
+            ((breakevens.get("upper") - spot) / spot * 100)
+            if breakevens and breakevens.get("upper")
+            else None
+        ),
     }
 
 

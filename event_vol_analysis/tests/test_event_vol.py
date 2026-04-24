@@ -167,7 +167,7 @@ def test_event_variance_exposes_annualized_and_daily_vol_fields() -> None:
         rel=1e-9,
     )
     assert float(output["event_vol_annualized"]) == pytest.approx(
-        float(output["event_vol_daily"]) * (252.0 ** 0.5),
+        float(output["event_vol_daily"]) * (252.0**0.5),
         rel=1e-9,
     )
 

@@ -38,7 +38,6 @@ from event_vol_analysis.reports.playbook_scan import (
     sort_playbook_rows,
 )
 
-
 LOGGER = logging.getLogger(__name__)
 LOG_PATH = Path("logs/daily_scan.log")
 IMPLIED_MOVE_MATERIAL_SHIFT_PCT = 10.0
@@ -584,7 +583,11 @@ def _run_overnight_analysis(cfg: ScanConfig) -> int:
                     front_expiry = expiries[0] if len(expiries) > 0 else None
                     back1_expiry = expiries[1] if len(expiries) > 1 else None
                     back2_expiry = expiries[2] if len(expiries) > 2 else None
-                    spot = chain_sample["underlying_price"].iloc[0] if "underlying_price" in chain_sample.columns else None
+                    spot = (
+                        chain_sample["underlying_price"].iloc[0]
+                        if "underlying_price" in chain_sample.columns
+                        else None
+                    )
                     ts = latest_ts
                 else:
                     skipped.append(_error_row(ticker, "no fallback quotes"))
@@ -1367,9 +1370,11 @@ def _summary_message(
     title = (
         "[PRE-MARKET EARNINGS SCAN COMPLETE]"
         if mode == "pre-market"
-        else "[OVERNIGHT EARNINGS ANALYSIS COMPLETE]"
-        if mode == "overnight"
-        else "[EARNINGS SCAN COMPLETE]"
+        else (
+            "[OVERNIGHT EARNINGS ANALYSIS COMPLETE]"
+            if mode == "overnight"
+            else "[EARNINGS SCAN COMPLETE]"
+        )
     )
     return "\n".join(
         [

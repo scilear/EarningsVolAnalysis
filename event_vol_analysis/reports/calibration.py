@@ -12,7 +12,6 @@ import pandas as pd
 
 from data.option_data_store import create_store
 
-
 MIN_REPORT_OBSERVATIONS = 5
 THRESHOLD_GATE_OBSERVATIONS = 20
 

@@ -33,7 +33,6 @@ from event_vol_analysis.config import (
 )
 from event_vol_analysis.strategies.structures import OptionLeg, Strategy
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -67,9 +66,7 @@ def backspread_conditions_met(snapshot: dict[str, Any]) -> bool:
 
     iv_ok = iv_ratio >= BACKSPREAD_MIN_IV_RATIO
     event_ok = event_var_ratio >= BACKSPREAD_MIN_EVENT_VAR_RATIO
-    pricing_ok = (
-        implied_move <= historical_p75 * BACKSPREAD_MAX_IMPLIED_OVER_P75
-    )
+    pricing_ok = implied_move <= historical_p75 * BACKSPREAD_MAX_IMPLIED_OVER_P75
     delta_ok = short_delta >= BACKSPREAD_MIN_SHORT_DELTA
     dte_ok = BACK3_DTE_MIN <= back_dte <= BACK3_DTE_MAX
 
@@ -277,14 +274,14 @@ def _select_backspread_strikes(
     min_width = spot * wing_width_pct
     if option_type == "call":
         # Long strike is above short strike (OTM call)
-        candidates = legs[
-            legs["strike"] >= short_strike + min_width
-        ].sort_values("strike")
+        candidates = legs[legs["strike"] >= short_strike + min_width].sort_values(
+            "strike"
+        )
     else:
         # Long strike is below short strike (OTM put)
-        candidates = legs[
-            legs["strike"] <= short_strike - min_width
-        ].sort_values("strike", ascending=False)
+        candidates = legs[legs["strike"] <= short_strike - min_width].sort_values(
+            "strike", ascending=False
+        )
 
     if candidates.empty:
         return None, None

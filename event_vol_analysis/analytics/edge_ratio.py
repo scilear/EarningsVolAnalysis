@@ -9,7 +9,6 @@ import numpy as np
 from event_vol_analysis.analytics.historical import ConditionalExpected
 from event_vol_analysis.macro_outcomes import query_event_type_tail_rate
 
-
 # Thresholds from earnings-playbook.md v1; review after 20+ observations in
 # calibration loop (T031).
 CHEAP_THRESHOLD = 0.8

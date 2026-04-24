@@ -93,14 +93,19 @@ def test_build_playbook_recommendation_emits_recommendation() -> None:
         event,
         context,
         _ranked(),
-        regime={"composite_regime": "Convex Breakout Setup", "gamma_regime": "Neutral Gamma"},
+        regime={
+            "composite_regime": "Convex Breakout Setup",
+            "gamma_regime": "Neutral Gamma",
+        },
         not_applicable=[{"name": "POST_EVENT_CALENDAR"}],
     )
     assert recommendation.event_key == event.key
     assert not recommendation.is_no_trade
     assert recommendation.recommended[0].structure_name == "CALL_BACKSPREAD"
     assert recommendation.key_levels == ["Gamma flip: 98.50"]
-    assert any(note.category == "blocked_structures" for note in recommendation.risk_notes)
+    assert any(
+        note.category == "blocked_structures" for note in recommendation.risk_notes
+    )
 
 
 def test_build_playbook_recommendation_returns_no_trade_when_empty() -> None:

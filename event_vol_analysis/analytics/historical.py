@@ -15,7 +15,6 @@ from scipy import stats
 
 from event_vol_analysis import config
 
-
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_EVENT_DB_PATH = Path("data/options_intraday.db")

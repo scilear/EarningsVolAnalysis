@@ -10,7 +10,6 @@ import pandas as pd
 from event_vol_analysis.config import TIME_EPSILON
 from event_vol_analysis.utils import atm_iv, business_days
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -88,9 +87,7 @@ def event_variance(
     raw_event_var = raw_event_var_annualized
     total_front_var = t_front * front_iv**2
     event_variance_ratio = (
-        raw_event_var * dt_event / total_front_var
-        if total_front_var > 0
-        else 0.0
+        raw_event_var * dt_event / total_front_var if total_front_var > 0 else 0.0
     )
     front_back_spread = front_iv - back1_iv
     back_slope = (back1_iv - back2_iv) if back2_iv is not None else None
@@ -106,9 +103,7 @@ def event_variance(
     # Term structure note
     term_structure_note = None
     if front_iv < back1_iv:
-        term_structure_note = (
-            "Front IV below back IV; term structure inversion."
-        )
+        term_structure_note = "Front IV below back IV; term structure inversion."
 
     return {
         # Original fields

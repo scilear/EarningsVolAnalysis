@@ -9,7 +9,6 @@ from typing import Any
 
 from jinja2 import Environment, BaseLoader
 
-
 # Hard filter thresholds for playbook universe construction
 PLAYBOOK_MAX_SPREAD_PCT: float = 0.15  # 15%
 PLAYBOOK_MIN_OI: int = 500

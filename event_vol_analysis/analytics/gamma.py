@@ -15,7 +15,6 @@ from event_vol_analysis.config import (
     RISK_FREE_RATE,
 )
 
-
 ONE_DAY_IN_YEARS = 1.0 / 365.0
 IV_BUMP = 0.01
 

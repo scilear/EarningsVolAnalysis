@@ -43,7 +43,6 @@ from event_vol_analysis.strategies.backspreads import (
 )
 from event_vol_analysis.strategies.scoring import score_strategies
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
@@ -64,17 +63,19 @@ def _make_chain(
     for i in range(n):
         strike = centre + (i - n // 2) * step
         for ot in ("call", "put"):
-            rows.append({
-                "strike": strike,
-                "option_type": ot,
-                "expiry": pd.Timestamp(expiry),
-                "impliedVolatility": 0.40,
-                "bid": 2.00,
-                "ask": 2.20,
-                "mid": 2.10,
-                "spread": 0.20,
-                "openInterest": 500,
-            })
+            rows.append(
+                {
+                    "strike": strike,
+                    "option_type": ot,
+                    "expiry": pd.Timestamp(expiry),
+                    "impliedVolatility": 0.40,
+                    "bid": 2.00,
+                    "ask": 2.20,
+                    "mid": 2.10,
+                    "spread": 0.20,
+                    "openInterest": 500,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -152,9 +153,9 @@ class TestEventVarianceRatioBounds:
     def test_negative_event_var_clipped_to_zero(self) -> None:
         """negative_event_var scenario: clamped event_var must be >= 0."""
         result = _call_event_variance("negative_event_var")
-        assert result["event_var"] >= 0.0, (
-            f"event_var must be clamped to zero, got {result['event_var']}"
-        )
+        assert (
+            result["event_var"] >= 0.0
+        ), f"event_var must be clamped to zero, got {result['event_var']}"
 
 
 # ── TestIvScenarioSignConventions ──────────────────────────────────────────
@@ -169,55 +170,45 @@ class TestIvScenarioSignConventions:
     def test_hard_crush_front_negative(self, evr: float) -> None:
         calibrate_iv_scenarios(0.70, 0.45, evr)
         val = config.IV_SCENARIOS["hard_crush"]["front"]
-        assert val <= 0.0, (
-            f"hard_crush front must be <= 0, got {val} (evr={evr})"
-        )
+        assert val <= 0.0, f"hard_crush front must be <= 0, got {val} (evr={evr})"
 
     @pytest.mark.parametrize("evr", [0.3, 0.6, 0.9])
     def test_hard_crush_back_negative(self, evr: float) -> None:
         calibrate_iv_scenarios(0.70, 0.45, evr)
         val = config.IV_SCENARIOS["hard_crush"]["back"]
-        assert val <= 0.0, (
-            f"hard_crush back must be <= 0, got {val} (evr={evr})"
-        )
+        assert val <= 0.0, f"hard_crush back must be <= 0, got {val} (evr={evr})"
 
     def test_base_crush_unchanged_by_calibration(self) -> None:
         """calibrate_iv_scenarios must NOT modify base_crush; it is
         fully market-data-relative and managed elsewhere."""
         original = copy.deepcopy(config.IV_SCENARIOS["base_crush"])
         calibrate_iv_scenarios(0.70, 0.45, 0.6)
-        assert config.IV_SCENARIOS["base_crush"] == original, (
-            "base_crush must not be mutated by calibrate_iv_scenarios"
-        )
+        assert (
+            config.IV_SCENARIOS["base_crush"] == original
+        ), "base_crush must not be mutated by calibrate_iv_scenarios"
 
     @pytest.mark.parametrize("evr", [0.3, 0.6, 0.9])
     def test_expansion_front_positive(self, evr: float) -> None:
         calibrate_iv_scenarios(0.70, 0.45, evr)
         val = config.IV_SCENARIOS["expansion"]["front"]
-        assert val > 0.0, (
-            f"expansion front must be > 0, got {val} (evr={evr})"
-        )
+        assert val > 0.0, f"expansion front must be > 0, got {val} (evr={evr})"
 
     @pytest.mark.parametrize("evr", [0.3, 0.6, 0.9])
     def test_expansion_back_positive(self, evr: float) -> None:
         calibrate_iv_scenarios(0.70, 0.45, evr)
         val = config.IV_SCENARIOS["expansion"]["back"]
-        assert val > 0.0, (
-            f"expansion back must be > 0, got {val} (evr={evr})"
-        )
+        assert val > 0.0, f"expansion back must be > 0, got {val} (evr={evr})"
 
     @pytest.mark.parametrize("evr", [0.5, 0.7, 1.0])
-    def test_hard_crush_magnitude_increases_with_evr(
-        self, evr: float
-    ) -> None:
+    def test_hard_crush_magnitude_increases_with_evr(self, evr: float) -> None:
         """At higher evr, hard_crush front is more negative."""
         calibrate_iv_scenarios(0.70, 0.45, evr)
         hard_front = config.IV_SCENARIOS["hard_crush"]["front"]
         # At evr >= 0.5, hard_crush front must be <= -0.10
         # (sqrt(0.5) - 1 ≈ -0.293 at evr=0.5)
-        assert hard_front <= -0.10, (
-            f"hard_crush front must be <= -0.10 at evr={evr}, got {hard_front}"
-        )
+        assert (
+            hard_front <= -0.10
+        ), f"hard_crush front must be <= -0.10 at evr={evr}, got {hard_front}"
 
 
 # ── TestImpliedMoveVsHistoricalBounds ─────────────────────────────────────
@@ -263,9 +254,7 @@ class TestBackspreadGateIndependence:
 
     def test_gate_blocks_on_event_var_ratio(self) -> None:
         snap = self._passing_snap()
-        snap["event_variance_ratio"] = (
-            BACKSPREAD_MIN_EVENT_VAR_RATIO - 0.01
-        )
+        snap["event_variance_ratio"] = BACKSPREAD_MIN_EVENT_VAR_RATIO - 0.01
         assert not backspread_conditions_met(snap)
 
     def test_gate_blocks_on_implied_move(self) -> None:
@@ -322,19 +311,16 @@ class TestScoringMonotonicity:
         scores = [r["score"] for r in ranked]
         for i in range(len(scores) - 1):
             assert scores[i] >= scores[i + 1], (
-                f"Score not descending at index {i}: "
-                f"{scores[i]} < {scores[i + 1]}"
+                f"Score not descending at index {i}: " f"{scores[i]} < {scores[i + 1]}"
             )
 
     def test_score_is_float_in_unit_interval(self) -> None:
         ranked = score_strategies(self._make_results())
         for r in ranked:
-            assert isinstance(r["score"], float), (
-                f"Score should be float, got {type(r['score'])}"
-            )
-            assert 0.0 <= r["score"] <= 1.0, (
-                f"Score {r['score']} outside [0, 1]"
-            )
+            assert isinstance(
+                r["score"], float
+            ), f"Score should be float, got {type(r['score'])}"
+            assert 0.0 <= r["score"] <= 1.0, f"Score {r['score']} outside [0, 1]"
 
 
 # ── TestGreeksWithDivYield ─────────────────────────────────────────────────
@@ -351,12 +337,22 @@ class TestGreeksWithDivYield:
 
     def test_call_delta_lower_with_div_yield(self) -> None:
         delta_no_q = bsm_delta(
-            self._SPOT, self._STRIKE, self._T,
-            RISK_FREE_RATE, 0.0, self._IV, "call",
+            self._SPOT,
+            self._STRIKE,
+            self._T,
+            RISK_FREE_RATE,
+            0.0,
+            self._IV,
+            "call",
         )
         delta_with_q = bsm_delta(
-            self._SPOT, self._STRIKE, self._T,
-            RISK_FREE_RATE, 0.05, self._IV, "call",
+            self._SPOT,
+            self._STRIKE,
+            self._T,
+            RISK_FREE_RATE,
+            0.05,
+            self._IV,
+            "call",
         )
         assert delta_with_q < delta_no_q, (
             "Call delta should decrease with positive div_yield: "
@@ -365,30 +361,50 @@ class TestGreeksWithDivYield:
 
     def test_put_delta_higher_magnitude_with_div_yield(self) -> None:
         put_no_q = bsm_delta(
-            self._SPOT, self._STRIKE, self._T,
-            RISK_FREE_RATE, 0.0, self._IV, "put",
+            self._SPOT,
+            self._STRIKE,
+            self._T,
+            RISK_FREE_RATE,
+            0.0,
+            self._IV,
+            "put",
         )
         put_with_q = bsm_delta(
-            self._SPOT, self._STRIKE, self._T,
-            RISK_FREE_RATE, 0.05, self._IV, "put",
+            self._SPOT,
+            self._STRIKE,
+            self._T,
+            RISK_FREE_RATE,
+            0.05,
+            self._IV,
+            "put",
         )
         # Put delta is negative; higher magnitude means more negative
-        assert abs(put_with_q) > abs(put_no_q), (
-            "Put delta magnitude should increase with positive div_yield"
-        )
+        assert abs(put_with_q) > abs(
+            put_no_q
+        ), "Put delta magnitude should increase with positive div_yield"
 
     def test_gamma_differs_with_div_yield(self) -> None:
         g_no_q = bsm_gamma(
-            self._SPOT, self._STRIKE, self._T,
-            RISK_FREE_RATE, 0.0, self._IV, "call",
+            self._SPOT,
+            self._STRIKE,
+            self._T,
+            RISK_FREE_RATE,
+            0.0,
+            self._IV,
+            "call",
         )
         g_with_q = bsm_gamma(
-            self._SPOT, self._STRIKE, self._T,
-            RISK_FREE_RATE, 0.05, self._IV, "call",
+            self._SPOT,
+            self._STRIKE,
+            self._T,
+            RISK_FREE_RATE,
+            0.05,
+            self._IV,
+            "call",
         )
-        assert not math.isclose(g_no_q, g_with_q, rel_tol=1e-6), (
-            f"Gamma should differ with div_yield: {g_no_q} vs {g_with_q}"
-        )
+        assert not math.isclose(
+            g_no_q, g_with_q, rel_tol=1e-6
+        ), f"Gamma should differ with div_yield: {g_no_q} vs {g_with_q}"
 
 
 # ── TestCalibratedParamsMakeRoundTrip ─────────────────────────────────────
@@ -411,9 +427,7 @@ class TestCalibratedParamsMakeRoundTrip:
         wing = params["backspread_min_wing_width_pct"]
         expiry = pd.Timestamp("2026-04-17")
         # Must not raise — may return None if no valid strike found
-        result = build_call_backspread(
-            chain, 100.0, expiry, wing_width_pct=wing
-        )
+        result = build_call_backspread(chain, 100.0, expiry, wing_width_pct=wing)
         assert result is None or hasattr(result, "legs")
 
     def test_calibrated_min_oi_accepted_by_filter(
@@ -426,6 +440,7 @@ class TestCalibratedParamsMakeRoundTrip:
             lambda t: _MockTicker({"marketCap": 5e11}),
         )
         from event_vol_analysis.data.filters import filter_by_liquidity
+
         chain = _make_chain(spot=100.0)
         params = calibrate_ticker_params("TEST", chain, 100.0)
         filtered = filter_by_liquidity(

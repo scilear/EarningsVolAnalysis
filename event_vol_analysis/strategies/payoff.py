@@ -19,7 +19,6 @@ from event_vol_analysis.config import (
 from event_vol_analysis.data.filters import execution_price, execution_price_vec
 from event_vol_analysis.strategies.structures import Strategy
 
-
 # =============================================================================
 # VECTORIZED VERSION (for Monte Carlo simulation)
 # =============================================================================
@@ -40,10 +39,10 @@ def strategy_pnl_vec(
     div_yield: float = DIVIDEND_YIELD,
 ) -> np.ndarray:
     """Compute P&L distribution for a strategy (vectorized over moves).
-    
+
     This is the optimized version that eliminates the Python loop over
     Monte Carlo simulations by vectorizing the BSM pricing.
-    
+
     Args:
         strategy: Strategy with legs to price
         chain: Options chain DataFrame
@@ -56,26 +55,26 @@ def strategy_pnl_vec(
         back_iv: Back month ATM IV
         slippage_pct: Slippage percentage
         scenario: IV scenario name
-    
+
     Returns:
         Array of P&L values (shape: (N,))
     """
     moves = np.asarray(moves, dtype=np.float64)
     n_sims = len(moves)
-    
+
     lookup = _build_lookup(chain)
     expiry_atm_iv = _expiry_atm_iv(chain, spot)
     entry_cost = _entry_cost(strategy, lookup, slippage_pct)
-    
+
     # Vectorized: compute all new spot prices at once
     new_spots = spot * (1.0 + moves)  # shape: (N,)
-    
+
     # Accumulate exit values across legs (small loop: 1-4 legs max)
     exit_values = np.zeros(n_sims, dtype=np.float64)
-    
+
     for leg in strategy.legs:
         data = _get_leg_data(lookup, leg)
-        
+
         if HOLD_TO_EXPIRY:
             # Vectorized intrinsic value
             prices = _intrinsic_vec(new_spots, leg.strike, leg.option_type)
@@ -109,17 +108,15 @@ def strategy_pnl_vec(
                 exit_side,
                 slippage_pct,
             )
-        
+
         # Accumulate leg contribution
         sign = 1.0 if leg.side == "buy" else -1.0
         exit_values += sign * prices * leg.qty * CONTRACT_MULTIPLIER
-    
+
     return exit_values - entry_cost
 
 
-def _intrinsic_vec(
-    spot_arr: np.ndarray, strike: float, option_type: str
-) -> np.ndarray:
+def _intrinsic_vec(spot_arr: np.ndarray, strike: float, option_type: str) -> np.ndarray:
     """Vectorized intrinsic value calculation."""
     if option_type == "call":
         return np.maximum(spot_arr - strike, 0.0)

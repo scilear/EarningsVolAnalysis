@@ -9,7 +9,6 @@ import pandas as pd
 from event_vol_analysis.config import IMPLIED_MOVE_MAX_SPREAD_PCT
 from event_vol_analysis.data.filters import execution_price
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -19,13 +18,13 @@ def implied_move_from_chain(
     """Compute implied move as slippage-adjusted ATM straddle price / spot."""
     if chain.empty:
         raise ValueError("Empty option chain provided.")
-    
+
     chain = chain.copy()
     chain["distance"] = (chain["strike"] - spot).abs()
-    
+
     if chain.empty:
         raise ValueError("Option chain has no valid strikes.")
-    
+
     atm_strike = chain.sort_values("distance").iloc[0]["strike"]
     atm = chain[chain["strike"] == atm_strike]
 
@@ -62,10 +61,7 @@ def _warn_wide_spread(call_row: pd.Series, put_row: pd.Series) -> None:
     call_pct = call_spread / call_mid if call_mid > 0 else float("inf")
     put_pct = put_spread / put_mid if put_mid > 0 else float("inf")
 
-    if (
-        call_pct > IMPLIED_MOVE_MAX_SPREAD_PCT
-        or put_pct > IMPLIED_MOVE_MAX_SPREAD_PCT
-    ):
+    if call_pct > IMPLIED_MOVE_MAX_SPREAD_PCT or put_pct > IMPLIED_MOVE_MAX_SPREAD_PCT:
         LOGGER.warning(
             "ATM spread exceeds %.2f%% of mid (call=%.2f%%, put=%.2f%%)",
             IMPLIED_MOVE_MAX_SPREAD_PCT * 100,

@@ -121,6 +121,7 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T041 | tasks/task_041.md | completed |
 | T043 | tasks/task_043.md | completed |
 | T044 | tasks/task_044.md | completed |
+| T045 | tasks/task_045_detailed.md | completed |
 | T046 | tasks/task_046.md | completed |
 | T047 | tasks/task_047.md | completed |
 

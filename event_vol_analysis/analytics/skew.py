@@ -10,7 +10,6 @@ from event_vol_analysis.analytics.bsm import delta as option_delta
 from event_vol_analysis.config import DIVIDEND_YIELD, RISK_FREE_RATE
 from event_vol_analysis.utils import atm_iv as calc_atm_iv
 
-
 LOGGER = logging.getLogger(__name__)
 
 

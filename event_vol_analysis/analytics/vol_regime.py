@@ -12,7 +12,6 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-
 LOGGER = logging.getLogger(__name__)
 
 _CHEAP = "CHEAP"

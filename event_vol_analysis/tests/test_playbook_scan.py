@@ -26,7 +26,6 @@ from event_vol_analysis.reports.playbook_scan import (
     sort_playbook_rows,
 )
 
-
 # Sample data for testing
 SAMPLE_VOL_REGIME = {
     "vol_regime": "CHEAP",

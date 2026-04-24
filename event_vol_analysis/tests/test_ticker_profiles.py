@@ -29,7 +29,6 @@ from event_vol_analysis.data.test_data import (
 from event_vol_analysis.strategies.backspreads import backspread_conditions_met
 from event_vol_analysis.strategies.registry import should_build_strategy
 
-
 # ── Helper ─────────────────────────────────────────────────────────────────
 
 
@@ -55,15 +54,15 @@ class TestHighDividendProfile:
 
     def test_call_backspread_blocked(self) -> None:
         snap = generate_scenario("high_dividend_snap")
-        assert not should_build_strategy("CALL_BACKSPREAD", snap), (
-            "CALL_BACKSPREAD must be blocked for high-dividend profile"
-        )
+        assert not should_build_strategy(
+            "CALL_BACKSPREAD", snap
+        ), "CALL_BACKSPREAD must be blocked for high-dividend profile"
 
     def test_put_backspread_blocked(self) -> None:
         snap = generate_scenario("high_dividend_snap")
-        assert not should_build_strategy("PUT_BACKSPREAD", snap), (
-            "PUT_BACKSPREAD must be blocked for high-dividend profile"
-        )
+        assert not should_build_strategy(
+            "PUT_BACKSPREAD", snap
+        ), "PUT_BACKSPREAD must be blocked for high-dividend profile"
 
     def test_iv_ratio_below_threshold(self) -> None:
         snap = generate_scenario("high_dividend_snap")
@@ -88,21 +87,21 @@ class TestStrongBackspreadProfile:
 
     def test_call_backspread_qualifies(self) -> None:
         snap = generate_scenario("strong_backspread_snap")
-        assert should_build_strategy("CALL_BACKSPREAD", snap), (
-            "CALL_BACKSPREAD must qualify for strong_backspread_snap"
-        )
+        assert should_build_strategy(
+            "CALL_BACKSPREAD", snap
+        ), "CALL_BACKSPREAD must qualify for strong_backspread_snap"
 
     def test_put_backspread_qualifies(self) -> None:
         snap = generate_scenario("strong_backspread_snap")
-        assert should_build_strategy("PUT_BACKSPREAD", snap), (
-            "PUT_BACKSPREAD must qualify for strong_backspread_snap"
-        )
+        assert should_build_strategy(
+            "PUT_BACKSPREAD", snap
+        ), "PUT_BACKSPREAD must qualify for strong_backspread_snap"
 
     def test_all_five_gates_pass(self) -> None:
         snap = generate_scenario("strong_backspread_snap")
-        assert backspread_conditions_met(snap), (
-            "All five backspread gates must pass for strong_backspread_snap"
-        )
+        assert backspread_conditions_met(
+            snap
+        ), "All five backspread gates must pass for strong_backspread_snap"
 
 
 # ── TestSmallCapBoundaryProfile ───────────────────────────────────────────
@@ -114,9 +113,9 @@ class TestSmallCapBoundaryProfile:
 
     def test_blocked_on_iv_ratio_alone(self) -> None:
         snap = generate_scenario("small_cap_snap")
-        assert not backspread_conditions_met(snap), (
-            "backspread_conditions_met must return False for small_cap_snap"
-        )
+        assert not backspread_conditions_met(
+            snap
+        ), "backspread_conditions_met must return False for small_cap_snap"
 
     def test_iv_ratio_is_below_threshold(self) -> None:
         snap = generate_scenario("small_cap_snap")
@@ -134,9 +133,9 @@ class TestSmallCapBoundaryProfile:
     def test_pricing_gate_would_pass(self) -> None:
         snap = generate_scenario("small_cap_snap")
         threshold = snap["historical_p75"] * BACKSPREAD_MAX_IMPLIED_OVER_P75
-        assert snap["implied_move"] <= threshold, (
-            "Pricing gate should pass if iv_ratio were sufficient"
-        )
+        assert (
+            snap["implied_move"] <= threshold
+        ), "Pricing gate should pass if iv_ratio were sufficient"
 
 
 # ── TestFullPipelineNewScenarios ──────────────────────────────────────────
@@ -146,20 +145,21 @@ class TestFullPipelineNewScenarios:
     """generate_test_data_set must complete without exception and return
     a dict with all required keys for each new scenario."""
 
-    @pytest.mark.parametrize("scenario", [
-        "high_dividend",
-        "mega_cap_tight",
-        "small_cap_wide_spread",
-        "high_iv_ratio_entry",
-        "distressed_deep_skew",
-        "minimal_history",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "high_dividend",
+            "mega_cap_tight",
+            "small_cap_wide_spread",
+            "high_iv_ratio_entry",
+            "distressed_deep_skew",
+            "minimal_history",
+        ],
+    )
     def test_pipeline_returns_required_keys(self, scenario: str) -> None:
         data = generate_test_data_set(scenario=scenario)
         missing = _REQUIRED_KEYS - set(data.keys())
-        assert not missing, (
-            f"Scenario '{scenario}' missing keys: {missing}"
-        )
+        assert not missing, f"Scenario '{scenario}' missing keys: {missing}"
 
     def test_high_dividend_chain_is_dataframe(self) -> None:
         data = generate_test_data_set(scenario="high_dividend")
@@ -175,17 +175,14 @@ class TestFullPipelineNewScenarios:
         """minimal_history must produce exactly 3 earnings dates."""
         data = generate_test_data_set(scenario="minimal_history")
         assert len(data["earnings_dates"]) == 3, (
-            f"Expected 3 earnings dates, "
-            f"got {len(data['earnings_dates'])}"
+            f"Expected 3 earnings dates, " f"got {len(data['earnings_dates'])}"
         )
 
     def test_small_cap_sparse_chain(self) -> None:
         """small_cap_wide_spread chain must have 13 strikes × 2 types."""
         data = generate_test_data_set(scenario="small_cap_wide_spread")
         n_strikes = data["front_chain"]["strike"].nunique()
-        assert n_strikes == 13, (
-            f"Expected 13 strikes, got {n_strikes}"
-        )
+        assert n_strikes == 13, f"Expected 13 strikes, got {n_strikes}"
 
 
 # ── TestCalibrationBoundaryBehavior ───────────────────────────────────────
@@ -203,32 +200,28 @@ class TestCalibrationBoundaryBehavior:
         """Tight-spread chain → _max_spread_pct must stay in [0.03, 0.20]."""
         chain, spot = self._get_front_chain("mega_cap_tight")
         val = _max_spread_pct(chain, spot)
-        assert 0.03 <= val <= 0.20, (
-            f"mega_cap spread_pct {val} outside [0.03, 0.20]"
-        )
+        assert 0.03 <= val <= 0.20, f"mega_cap spread_pct {val} outside [0.03, 0.20]"
 
     def test_small_cap_spread_pct_within_bounds(self) -> None:
         """Wide-spread chain → _max_spread_pct must stay in [0.03, 0.20]."""
         chain, spot = self._get_front_chain("small_cap_wide_spread")
         val = _max_spread_pct(chain, spot)
-        assert 0.03 <= val <= 0.20, (
-            f"small_cap spread_pct {val} outside [0.03, 0.20]"
-        )
+        assert 0.03 <= val <= 0.20, f"small_cap spread_pct {val} outside [0.03, 0.20]"
 
-    @pytest.mark.parametrize("scenario", [
-        "high_dividend",
-        "mega_cap_tight",
-        "small_cap_wide_spread",
-        "high_iv_ratio_entry",
-        "distressed_deep_skew",
-        "minimal_history",
-    ])
-    def test_wing_width_reasonable_for_any_chain(
-        self, scenario: str
-    ) -> None:
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "high_dividend",
+            "mega_cap_tight",
+            "small_cap_wide_spread",
+            "high_iv_ratio_entry",
+            "distressed_deep_skew",
+            "minimal_history",
+        ],
+    )
+    def test_wing_width_reasonable_for_any_chain(self, scenario: str) -> None:
         chain, spot = self._get_front_chain(scenario)
         val = _wing_width_pct(chain, spot)
         assert 0.005 <= val <= 0.05, (
-            f"wing_width_pct {val} outside [0.005, 0.05] "
-            f"for scenario '{scenario}'"
+            f"wing_width_pct {val} outside [0.005, 0.05] " f"for scenario '{scenario}'"
         )
