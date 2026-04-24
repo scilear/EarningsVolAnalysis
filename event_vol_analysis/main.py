@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from event_option_playbook import (
     build_playbook_recommendation,
@@ -391,35 +392,111 @@ def _not_applicable_reason(name: str, snapshot: dict) -> str:
     return "Entry conditions not met"
 
 
+def _safe_abs_quantile(values: np.ndarray, q: float) -> float:
+    """Return quantile of absolute moves, robust to empty vectors."""
+    if values.size == 0:
+        return 0.0
+    return float(np.quantile(np.abs(values), q))
+
+
+def _compute_quantile_deviation(
+    implied_move: float,
+    simulated_abs_quantiles: dict[str, float],
+) -> dict[str, object]:
+    """Compare implied absolute-move quantiles to simulated quantiles."""
+    implied_scale = max(float(implied_move), config.TIME_EPSILON)
+    quantile_deviation: dict[str, dict[str, float | str]] = {}
+    deviation_vals: list[float] = []
+
+    for label in ("p10", "p50", "p90"):
+        sim_val = float(simulated_abs_quantiles.get(label, 0.0) or 0.0)
+        abs_dev = abs(sim_val - implied_scale)
+        rel_dev = abs_dev / implied_scale
+        if sim_val > implied_scale:
+            direction = "simulation_over"
+        elif sim_val < implied_scale:
+            direction = "simulation_under"
+        else:
+            direction = "matched"
+        quantile_deviation[label] = {
+            "simulated": sim_val,
+            "implied_proxy": implied_scale,
+            "abs_deviation": abs_dev,
+            "relative_deviation": rel_dev,
+            "direction": direction,
+        }
+        deviation_vals.append(rel_dev)
+
+    max_dev = max(deviation_vals) if deviation_vals else 1.0
+    mean_dev = float(np.mean(deviation_vals)) if deviation_vals else 1.0
+    score = max(0.0, min(100.0, 100.0 * (1.0 - (0.6 * mean_dev + 0.4 * max_dev))))
+    if score >= config.TRUST_SCORE_PASS_THRESHOLD:
+        status = "PASS"
+        confidence = "HIGH"
+    elif score >= config.TRUST_SCORE_WARN_THRESHOLD:
+        status = "WARN"
+        confidence = "MEDIUM"
+    else:
+        status = "FAIL"
+        confidence = "LOW"
+
+    dominant_dir = "matched"
+    if quantile_deviation:
+        dominant_q = max(
+            quantile_deviation.items(),
+            key=lambda item: float(item[1]["abs_deviation"]),
+        )[0]
+        dominant_dir = str(quantile_deviation[dominant_q]["direction"])
+
+    return {
+        "quantile_deviation": quantile_deviation,
+        "trust_score": float(score),
+        "status": status,
+        "confidence": confidence,
+        "mismatch_direction": dominant_dir,
+    }
+
+
 def _compute_trust_metrics(
     *,
     implied_move: float,
     simulation_comparison: dict[str, dict[str, float]],
-) -> dict[str, float | str | bool]:
-    """Compute ranking trust diagnostics from implied-vs-simulated scale."""
+) -> dict[str, float | str | bool | dict[str, object]]:
+    """Compute trust diagnostics using quantile deviation and continuous score."""
     selected = simulation_comparison.get("fat_tailed", {})
     selected_mean_abs = float(selected.get("mean_abs_move", 0.0) or 0.0)
     ratio = implied_move / max(selected_mean_abs, config.TIME_EPSILON)
-
-    fail_low = 1.0 / max(config.TRUST_MISMATCH_FAIL_THRESHOLD, 1e-9)
-    warn_low = 1.0 / max(config.TRUST_MISMATCH_WARN_THRESHOLD, 1e-9)
-
-    if ratio > config.TRUST_MISMATCH_FAIL_THRESHOLD or ratio < fail_low:
-        status = "FAIL"
-        confidence = "LOW"
-    elif ratio > config.TRUST_MISMATCH_WARN_THRESHOLD or ratio < warn_low:
+    quantiles = {
+        "p10": float(selected.get("abs_q10", 0.0) or 0.0),
+        "p50": float(selected.get("abs_q50", 0.0) or 0.0),
+        "p90": float(selected.get("abs_q90", 0.0) or 0.0),
+    }
+    qdiag = _compute_quantile_deviation(implied_move, quantiles)
+    ks_pvalue = float(selected.get("ks_pvalue", 0.0) or 0.0)
+    ks_score = max(0.0, min(100.0, ks_pvalue * 100.0))
+    trust_score = 0.7 * float(qdiag["trust_score"]) + 0.3 * ks_score
+    if trust_score >= config.TRUST_SCORE_PASS_THRESHOLD:
+        status = "PASS"
+        confidence = "HIGH"
+    elif trust_score >= config.TRUST_SCORE_WARN_THRESHOLD:
         status = "WARN"
         confidence = "MEDIUM"
     else:
-        status = "PASS"
-        confidence = "HIGH"
+        status = "FAIL"
+        confidence = "LOW"
 
     return {
         "implied_move": float(implied_move),
         "simulated_mean_abs_move": selected_mean_abs,
+        "simulated_abs_quantiles": quantiles,
         "mismatch_ratio": float(ratio),
         "status": status,
         "confidence": confidence,
+        "trust_score": float(trust_score),
+        "ks_pvalue": ks_pvalue,
+        "ks_score": ks_score,
+        "quantile_deviation": qdiag["quantile_deviation"],
+        "mismatch_direction": str(qdiag["mismatch_direction"]),
         "ranking_allowed": status != "FAIL",
         "fat_tail_active": bool(
             simulation_comparison.get("fat_tailed", {}).get("tail_prob_gt_6pct", 0.0)
@@ -428,14 +505,77 @@ def _compute_trust_metrics(
     }
 
 
-def _short_vol_dte_reason(front_dte: int) -> str | None:
-    """Return rejection reason when short-vol DTE is outside allowed window."""
-    if config.SHORT_VOL_DTE_MIN <= front_dte <= config.SHORT_VOL_DTE_MAX:
-        return None
-    return (
-        f"front DTE {front_dte}d outside "
-        f"[{config.SHORT_VOL_DTE_MIN}, {config.SHORT_VOL_DTE_MAX}]"
-    )
+def _short_vol_dte_weight(front_dte: int) -> float:
+    """Return continuous short-vol risk weight for front DTE."""
+    lower = int(config.SHORT_VOL_DTE_MIN)
+    upper = int(config.SHORT_VOL_DTE_MAX)
+    if lower <= int(front_dte) <= upper:
+        return 1.0
+
+    if int(front_dte) < lower:
+        distance = float(lower - int(front_dte))
+    else:
+        distance = float(int(front_dte) - upper)
+
+    window = max(float(upper - lower + 1), 1.0)
+    penalty = min(distance / window, 1.0)
+    return float(max(0.35, 1.0 - 0.65 * penalty))
+
+
+def _short_vol_evidence_gate(
+    ticker: str,
+    *,
+    db_path: Path = Path("data/options_intraday.db"),
+    lookback: int = 8,
+) -> dict[str, object]:
+    """Evaluate whether short-vol has historical implied-over-realized support."""
+    if not db_path.exists():
+        return {
+            "allowed": False,
+            "wins": 0,
+            "samples": 0,
+            "note": "earnings outcomes db missing",
+        }
+    try:
+        from data.option_data_store import create_store
+
+        store = create_store(db_path)
+        outcomes = store.get_earnings_outcomes(ticker=ticker.upper())
+    except Exception:
+        return {
+            "allowed": False,
+            "wins": 0,
+            "samples": 0,
+            "note": "earnings outcomes query failed",
+        }
+
+    if outcomes.empty or "realized_vs_implied_ratio" not in outcomes.columns:
+        return {
+            "allowed": False,
+            "wins": 0,
+            "samples": 0,
+            "note": "no realized_vs_implied history",
+        }
+
+    frame = outcomes.sort_values("event_date", ascending=False).copy()
+    ratios = pd.to_numeric(frame["realized_vs_implied_ratio"], errors="coerce")
+    valid = ratios.dropna().head(lookback)
+    samples = int(len(valid))
+    if samples <= 0:
+        return {
+            "allowed": False,
+            "wins": 0,
+            "samples": 0,
+            "note": "no completed outcomes",
+        }
+    wins = int((valid < 1.0).sum())
+    allowed = wins > (samples / 2.0)
+    return {
+        "allowed": bool(allowed),
+        "wins": wins,
+        "samples": samples,
+        "note": f"implied>realized in {wins}/{samples} events",
+    }
 
 
 def _resolve_simulation_event_vol(
@@ -448,6 +588,18 @@ def _resolve_simulation_event_vol(
         return max(float(event_vol), 0.0)
     implied_sigma_proxy = implied_move / math.sqrt(2.0 / math.pi)
     return max(float(event_vol), float(implied_sigma_proxy))
+
+
+def _implied_abs_move_reference(
+    implied_move: float,
+    sample_size: int,
+    *,
+    seed: int,
+) -> np.ndarray:
+    """Sample implied-reference absolute moves from a half-normal proxy."""
+    sigma = max(float(implied_move), config.TIME_EPSILON) / math.sqrt(2.0 / math.pi)
+    rng = np.random.default_rng(seed)
+    return np.abs(rng.normal(0.0, sigma, size=sample_size))
 
 
 def _load_tickers_from_file(file_path: str) -> list[str]:
@@ -1325,17 +1477,32 @@ def main() -> None:
     simulation_comparison = {
         "lognormal": {
             "mean_abs_move": float(np.mean(np.abs(lognormal_moves))),
+            "abs_q10": _safe_abs_quantile(lognormal_moves, 0.10),
+            "abs_q50": _safe_abs_quantile(lognormal_moves, 0.50),
+            "abs_q90": _safe_abs_quantile(lognormal_moves, 0.90),
             "p95_abs_move": float(np.percentile(np.abs(lognormal_moves), 95)),
             "tail_prob_gt_6pct": float(np.mean(np.abs(lognormal_moves) > 0.06)),
             "tail_prob_gt_10pct": float(np.mean(np.abs(lognormal_moves) > 0.10)),
         },
         "fat_tailed": {
             "mean_abs_move": float(np.mean(np.abs(fat_tailed_moves))),
+            "abs_q10": _safe_abs_quantile(fat_tailed_moves, 0.10),
+            "abs_q50": _safe_abs_quantile(fat_tailed_moves, 0.50),
+            "abs_q90": _safe_abs_quantile(fat_tailed_moves, 0.90),
             "p95_abs_move": float(np.percentile(np.abs(fat_tailed_moves), 95)),
             "tail_prob_gt_6pct": float(np.mean(np.abs(fat_tailed_moves) > 0.06)),
             "tail_prob_gt_10pct": float(np.mean(np.abs(fat_tailed_moves) > 0.10)),
         },
     }
+
+    implied_abs_reference = _implied_abs_move_reference(
+        implied_move,
+        len(fat_tailed_moves),
+        seed=comparison_seed + 911,
+    )
+    ks_result = stats.ks_2samp(np.abs(fat_tailed_moves), implied_abs_reference)
+    simulation_comparison["fat_tailed"]["ks_statistic"] = float(ks_result.statistic)
+    simulation_comparison["fat_tailed"]["ks_pvalue"] = float(ks_result.pvalue)
 
     trust_metrics = _compute_trust_metrics(
         implied_move=implied_move,
@@ -1389,23 +1556,30 @@ def main() -> None:
                     "reason": _not_applicable_reason(cond_name, early_snapshot),
                 }
             )
-
-    short_vol_dte_block_reason = _short_vol_dte_reason(front_dte)
-    if short_vol_dte_block_reason is not None:
+    short_vol_dte_weight = _short_vol_dte_weight(front_dte)
+    short_vol_evidence = _short_vol_evidence_gate(ticker)
+    if not short_vol_evidence["allowed"]:
+        evidence_reason = (
+            "short-vol evidence gate failed: "
+            f"{short_vol_evidence['note']}"
+        )
         not_applicable.extend(
             [
-                {"name": "IRON_CONDOR", "reason": short_vol_dte_block_reason},
-                {"name": "CALENDAR", "reason": short_vol_dte_block_reason},
+                {"name": "IRON_CONDOR", "reason": evidence_reason},
+                {"name": "CALENDAR", "reason": evidence_reason},
             ]
         )
 
     results = []
     for strategy in strategies:
-        if strategy.name in _SHORT_VOL_STRATEGY_NAMES and short_vol_dte_block_reason:
+        if (
+            strategy.name in _SHORT_VOL_STRATEGY_NAMES
+            and not short_vol_evidence["allowed"]
+        ):
             LOGGER.info(
-                "Skipping short-vol strategy %s: %s",
+                "Skipping short-vol strategy %s due to evidence gate: %s",
                 strategy.name,
-                short_vol_dte_block_reason,
+                short_vol_evidence["note"],
             )
             continue
         try:
@@ -1495,6 +1669,13 @@ def main() -> None:
         metrics["net_gamma"] = net_greeks["gamma"]
         metrics["net_vega"] = net_greeks["vega"]
         metrics["net_theta"] = net_greeks["theta"]
+        metrics["risk_weight"] = 1.0
+        if strategy.name in _SHORT_VOL_STRATEGY_NAMES:
+            metrics["risk_weight"] = short_vol_dte_weight
+            metrics["ev"] = float(metrics["ev"]) * short_vol_dte_weight
+            metrics["capital_normalized_ev"] = (
+                float(metrics["capital_normalized_ev"]) * short_vol_dte_weight
+            )
         pnls = base_pnls
         metrics["pnls"] = pnls
         results.append(metrics)
@@ -1507,15 +1688,17 @@ def main() -> None:
     trust_gate_failed = trust_metrics.get("status") == "FAIL"
     if trust_gate_failed:
         LOGGER.warning(
-            "Trust gate failed (mismatch %.2fx): suppressing recommendations.",
-            float(trust_metrics.get("mismatch_ratio", 0.0)),
+            "Trust gate failed (score %.1f, dir=%s): suppressing recommendations.",
+            float(trust_metrics.get("trust_score", 0.0)),
+            str(trust_metrics.get("mismatch_direction", "matched")),
         )
         not_applicable.append(
             {
                 "name": "TRUST_GATE",
                 "reason": (
-                    "Ranking suppressed due to implied-vs-simulated mismatch "
-                    f"({float(trust_metrics.get('mismatch_ratio', 0.0)):.2f}x)"
+                    "Ranking suppressed due to trust score "
+                    f"{float(trust_metrics.get('trust_score', 0.0)):.1f} "
+                    f"(direction={str(trust_metrics.get('mismatch_direction', 'matched'))})"
                 ),
             }
         )
@@ -1690,6 +1873,8 @@ def main() -> None:
         "fat_tail_calibration": fat_tail_inputs,
         "simulation_comparison": simulation_comparison,
         "trust_metrics": trust_metrics,
+        "short_vol_dte_weight": short_vol_dte_weight,
+        "short_vol_evidence": short_vol_evidence,
         "rr25": rr25_value,
         "bf25": bf25_value,
         "rr25_raw": rr25_raw,
@@ -2087,9 +2272,11 @@ def _print_console_snapshot(
     if snapshot and snapshot.get("trust_metrics"):
         trust = snapshot["trust_metrics"]
         print(f"Trust Gate:           {trust['status']}")
+        print(f"Trust Score:          {trust.get('trust_score', 0.0):.1f}")
         print(f"Mismatch Ratio:       {trust['mismatch_ratio']:.2f}x")
+        print(f"Mismatch Direction:   {trust.get('mismatch_direction', 'matched')}")
         if trust["status"] == "FAIL":
-            print("TRUST GATE FAILED: implied-vs-simulated scale mismatch")
+            print("TRUST GATE FAILED: quantile consistency check failed")
     if snapshot and snapshot.get("simulation_event_vol") is not None:
         print(f"Sim Sigma (daily):    {snapshot['simulation_event_vol']:.4f}")
 

@@ -1,5 +1,6 @@
 id: T046
 title: Rate Limiting + Dynamic Earnings Universe for EOD Refresh
+status: completed
 
 objective:
   Add rate limiting to yfinance-based option chain fetching, and implement
@@ -67,6 +68,14 @@ definition_of_done:
   - Dynamic universe implemented
   - Integration tests pass
   - Task marked complete in docs/TASKS.md
+
+completion_notes:
+  - Added yfinance throttle + 429 retry backoff in loader and calendar backfill paths.
+  - Added config controls `YF_RATE_LIMIT_MS` and `YF_MAX_RETRIES`.
+  - Added dynamic universe selection from `event_registry` using
+    `[scan_date-14d, scan_date+30d]` with static fallback.
+  - Wired EOD refresh and daily calendar ingestion to dynamic universe.
+  - Added tests for rate limiter behavior and dynamic universe fallback/filtering.
 
 notes:
   - IB is the primary source during market hours - yfinance fallback only runs

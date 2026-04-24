@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -11,11 +12,68 @@ from typing import Iterable
 import pandas as pd
 import yfinance as yf
 
+from event_vol_analysis import config
 from event_vol_analysis.config import BACK3_DTE_MIN, BACK3_DTE_MAX
 
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_CACHE_DB_PATH = Path("data/options_intraday.db")
+_LAST_YF_REQUEST_MONOTONIC: float | None = None
+
+
+def _is_yf_rate_limited(exc: Exception) -> bool:
+    """Return True when the exception resembles a yfinance 429 limit."""
+    message = str(exc).lower()
+    return "429" in message or "too many requests" in message
+
+
+def _throttle_yfinance() -> None:
+    """Enforce configured gap between yfinance requests."""
+    global _LAST_YF_REQUEST_MONOTONIC
+
+    delay_seconds = max(float(config.YF_RATE_LIMIT_MS), 0.0) / 1000.0
+    if delay_seconds <= 0.0:
+        return
+
+    now = time.monotonic()
+    if _LAST_YF_REQUEST_MONOTONIC is not None:
+        elapsed = now - _LAST_YF_REQUEST_MONOTONIC
+        if elapsed < delay_seconds:
+            sleep_for = delay_seconds - elapsed
+            LOGGER.info("yfinance throttle sleep %.3fs", sleep_for)
+            time.sleep(sleep_for)
+    _LAST_YF_REQUEST_MONOTONIC = time.monotonic()
+
+
+def _execute_yfinance_call(
+    operation,
+    *,
+    ticker: str,
+    action: str,
+):
+    """Execute one yfinance call with throttle + 429 exponential backoff."""
+    attempts = max(int(config.YF_MAX_RETRIES), 1)
+
+    for attempt in range(1, attempts + 1):
+        _throttle_yfinance()
+        try:
+            return operation()
+        except Exception as exc:
+            retryable = _is_yf_rate_limited(exc)
+            if (not retryable) or attempt >= attempts:
+                raise
+            backoff_seconds = float(2 ** (attempt - 1))
+            LOGGER.warning(
+                "yfinance %s rate-limited for %s "
+                "(attempt %d/%d), retrying in %.1fs: %s",
+                action,
+                ticker.upper(),
+                attempt,
+                attempts,
+                backoff_seconds,
+                exc,
+            )
+            time.sleep(backoff_seconds)
 
 
 @dataclass(frozen=True)
@@ -31,7 +89,11 @@ class EventDateResolution:
 def get_spot_price(ticker: str) -> float:
     """Fetch the latest close price for a ticker."""
     yf_ticker = yf.Ticker(ticker)
-    history = yf_ticker.history(period="5d")
+    history = _execute_yfinance_call(
+        lambda: yf_ticker.history(period="5d"),
+        ticker=ticker,
+        action="history",
+    )
     if history.empty:
         raise ValueError("No price history returned for ticker.")
     return float(history["Close"].iloc[-1])
@@ -40,7 +102,11 @@ def get_spot_price(ticker: str) -> float:
 def get_option_expiries(ticker: str) -> list[dt.date]:
     """Return available option expiry dates as date objects."""
     yf_ticker = yf.Ticker(ticker)
-    expiries = yf_ticker.options
+    expiries = _execute_yfinance_call(
+        lambda: yf_ticker.options,
+        ticker=ticker,
+        action="options",
+    )
     if not expiries:
         raise ValueError("No option expiries available for ticker.")
     parsed = [dt.datetime.strptime(exp, "%Y-%m-%d").date() for exp in expiries]
@@ -147,7 +213,11 @@ def get_options_chain(
         )
 
     yf_ticker = yf.Ticker(ticker)
-    chain = yf_ticker.option_chain(expiry.strftime("%Y-%m-%d"))
+    chain = _execute_yfinance_call(
+        lambda: yf_ticker.option_chain(expiry.strftime("%Y-%m-%d")),
+        ticker=ticker,
+        action="option_chain",
+    )
 
     calls = _normalize_chain_frame(chain.calls, "call", expiry)
     puts = _normalize_chain_frame(chain.puts, "put", expiry)
@@ -249,7 +319,11 @@ def get_price_history(ticker: str, years: int) -> pd.DataFrame:
     yf_ticker = yf.Ticker(ticker)
     end = dt.date.today()
     start = end - dt.timedelta(days=int(years * 365.25))
-    history = yf_ticker.history(start=start, end=end)
+    history = _execute_yfinance_call(
+        lambda: yf_ticker.history(start=start, end=end),
+        ticker=ticker,
+        action="history",
+    )
     if history.empty:
         raise ValueError("No historical price data returned.")
     history = history.reset_index()
@@ -279,7 +353,11 @@ def resolve_next_earnings_date(
     """
     as_of = today or dt.date.today()
     try:
-        earnings = yf.Ticker(ticker).get_earnings_dates(limit=limit)
+        earnings = _execute_yfinance_call(
+            lambda: yf.Ticker(ticker).get_earnings_dates(limit=limit),
+            ticker=ticker,
+            action="get_earnings_dates",
+        )
     except Exception as exc:
         return EventDateResolution(
             status="fetch_error",
@@ -380,7 +458,11 @@ def get_dividend_yield(ticker: str) -> float:
         Dividend yield as a decimal (e.g. 0.012 for 1.2%).
     """
     try:
-        info = yf.Ticker(ticker).info
+        info = _execute_yfinance_call(
+            lambda: yf.Ticker(ticker).info,
+            ticker=ticker,
+            action="info",
+        )
         yield_val = info.get("dividendYield")
         if yield_val is not None:
             return float(yield_val)
@@ -394,7 +476,11 @@ def get_earnings_dates(ticker: str, limit: int = 12) -> list[pd.Timestamp]:
     """Fetch recent earnings dates using yfinance."""
     yf_ticker = yf.Ticker(ticker)
     try:
-        earnings = yf_ticker.get_earnings_dates(limit=limit)
+        earnings = _execute_yfinance_call(
+            lambda: yf_ticker.get_earnings_dates(limit=limit),
+            ticker=ticker,
+            action="get_earnings_dates",
+        )
     except Exception as exc:
         LOGGER.warning("Earnings dates fetch failed: %s", exc)
         return []

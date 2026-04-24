@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,60 @@ from typing import Any
 import yfinance as yf
 
 from data.option_data_store import OptionsDataStore, create_store
+from event_vol_analysis import config
+
+
+LOGGER = logging.getLogger(__name__)
+_LAST_YF_REQUEST_MONOTONIC: float | None = None
+
+
+def _is_yf_rate_limited(exc: Exception) -> bool:
+    """Return True when the exception resembles an HTTP 429 rate limit."""
+    message = str(exc).lower()
+    return "429" in message or "too many requests" in message
+
+
+def _throttle_yfinance() -> None:
+    """Throttle yfinance calls with configured inter-request delay."""
+    global _LAST_YF_REQUEST_MONOTONIC
+    delay_seconds = max(float(config.YF_RATE_LIMIT_MS), 0.0) / 1000.0
+    if delay_seconds <= 0.0:
+        return
+
+    now = time.monotonic()
+    if _LAST_YF_REQUEST_MONOTONIC is not None:
+        elapsed = now - _LAST_YF_REQUEST_MONOTONIC
+        if elapsed < delay_seconds:
+            sleep_for = delay_seconds - elapsed
+            LOGGER.info("yfinance throttle sleep %.3fs", sleep_for)
+            time.sleep(sleep_for)
+    _LAST_YF_REQUEST_MONOTONIC = time.monotonic()
+
+
+def _fetch_earnings_dates_with_backoff(ticker: str, limit: int):
+    """Fetch earnings dates with exponential backoff on 429 responses."""
+    attempts = max(int(config.YF_MAX_RETRIES), 1)
+    yf_ticker = yf.Ticker(ticker)
+
+    for attempt in range(1, attempts + 1):
+        _throttle_yfinance()
+        try:
+            return yf_ticker.get_earnings_dates(limit=limit)
+        except Exception as exc:
+            retryable = _is_yf_rate_limited(exc)
+            if (not retryable) or attempt >= attempts:
+                raise
+            backoff_seconds = float(2 ** (attempt - 1))
+            LOGGER.warning(
+                "Earnings backfill rate-limited for %s "
+                "(attempt %d/%d), retrying in %.1fs: %s",
+                ticker,
+                attempt,
+                attempts,
+                backoff_seconds,
+                exc,
+            )
+            time.sleep(backoff_seconds)
 
 
 def build_event_id(
@@ -95,7 +151,7 @@ def auto_ingest_earnings_calendar(
 
     for ticker in normalized_tickers:
         try:
-            earnings = yf.Ticker(ticker).get_earnings_dates(limit=limit)
+            earnings = _fetch_earnings_dates_with_backoff(ticker, limit)
         except Exception as exc:
             summary["fetch_errors"].append({"ticker": ticker, "error": str(exc)})
             continue

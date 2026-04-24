@@ -43,6 +43,8 @@ LOGGER = logging.getLogger(__name__)
 LOG_PATH = Path("logs/daily_scan.log")
 IMPLIED_MOVE_MATERIAL_SHIFT_PCT = 10.0
 IV_REGIME_MATERIAL_SHIFT_PCT = 15.0
+DYNAMIC_UNIVERSE_LOOKBACK_DAYS = 14
+DYNAMIC_UNIVERSE_LOOKAHEAD_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -324,16 +326,17 @@ def _run_validate_cache(cfg: ScanConfig) -> int:
 
 
 def _run_eod_refresh(cfg: ScanConfig) -> int:
-    """Fetch and cache EOD option chains for the full universe."""
+    """Fetch and cache EOD option chains for the dynamic universe."""
     import time
 
     LOGGER.info("EOD refresh start date=%s", cfg.scan_date)
     store = create_store(cfg.db_path)
+    target_tickers = _resolve_dynamic_universe(cfg, store)
     results: list[dict[str, Any]] = []
     capture_ts = dt.datetime.now(dt.timezone.utc)
     capture_date = cfg.scan_date
 
-    for ticker in cfg.tickers:
+    for ticker in target_tickers:
         LOGGER.info("EOD refresh: fetching %s", ticker)
         try:
             previous_snapshot = store.query_eod_snapshot(ticker.upper(), None, "all")
@@ -826,6 +829,58 @@ def _resolve_tickers(cli_tickers: str, ticker_file: str) -> list[str]:
     return list(dict.fromkeys(config.TICKER.upper() for _ in range(1)))
 
 
+def _resolve_dynamic_universe(
+    cfg: ScanConfig,
+    store,
+) -> list[str]:
+    """Resolve dynamic earnings universe with static fallback."""
+    window_start = cfg.scan_date - dt.timedelta(days=DYNAMIC_UNIVERSE_LOOKBACK_DAYS)
+    window_end = cfg.scan_date + dt.timedelta(days=DYNAMIC_UNIVERSE_LOOKAHEAD_DAYS)
+
+    try:
+        registry = store.get_event_registry()
+    except Exception as exc:
+        LOGGER.warning("Dynamic universe query failed, using static list: %s", exc)
+        return cfg.tickers
+
+    if registry.empty:
+        LOGGER.info("Dynamic universe empty (no registry rows), using static list")
+        return cfg.tickers
+
+    family = registry["event_family"].astype(str).str.lower() == "earnings"
+    status = registry["event_status"].astype(str).str.lower() != "cancelled"
+    in_window = (registry["event_date"] >= window_start) & (
+        registry["event_date"] <= window_end
+    )
+    frame = registry[family & status & in_window]
+    if frame.empty:
+        LOGGER.info(
+            "Dynamic universe empty for %s..%s, using static list",
+            window_start,
+            window_end,
+        )
+        return cfg.tickers
+
+    tickers = sorted(
+        {
+            str(value).upper()
+            for value in frame["underlying_symbol"].dropna().tolist()
+            if str(value).strip()
+        }
+    )
+    if not tickers:
+        LOGGER.info("Dynamic universe had no valid symbols, using static list")
+        return cfg.tickers
+
+    LOGGER.info(
+        "Using dynamic earnings universe (%d tickers, window %s..%s)",
+        len(tickers),
+        window_start,
+        window_end,
+    )
+    return tickers
+
+
 def _normalize_ticker_tokens(tokens: list[str]) -> list[str]:
     """Normalize tokens to de-duplicated uppercase tickers."""
 
@@ -845,8 +900,10 @@ def _fetch_upcoming_earnings_events(cfg: ScanConfig) -> list[dict[str, Any]]:
 
     start_date = cfg.scan_date
     horizon = start_date + dt.timedelta(days=cfg.days_ahead)
+    store = create_store(cfg.db_path)
+    ingest_tickers = _resolve_dynamic_universe(cfg, store)
     ingest = auto_ingest_earnings_calendar_db(
-        cfg.tickers,
+        ingest_tickers,
         db_path=cfg.db_path,
         limit=cfg.limit_per_ticker,
         on_or_after=start_date,
@@ -859,7 +916,6 @@ def _fetch_upcoming_earnings_events(cfg: ScanConfig) -> list[dict[str, Any]]:
         len(ingest.get("fetch_errors", [])),
     )
 
-    store = create_store(cfg.db_path)
     registry = store.get_event_registry()
     if registry.empty:
         LOGGER.info("No events found in event_registry after ingestion")

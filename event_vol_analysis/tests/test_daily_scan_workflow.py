@@ -723,6 +723,57 @@ def test_fetch_upcoming_events_pre_market_exact_date(
     assert events[0]["ticker"] == "AAPL"
 
 
+def test_dynamic_universe_filters_earnings_window() -> None:
+    class _Store:
+        def get_event_registry(self):
+            return pd.DataFrame(
+                [
+                    {
+                        "event_family": "earnings",
+                        "event_status": "scheduled",
+                        "event_date": dt.date(2026, 4, 20),
+                        "underlying_symbol": "AAPL",
+                    },
+                    {
+                        "event_family": "earnings",
+                        "event_status": "scheduled",
+                        "event_date": dt.date(2026, 5, 25),
+                        "underlying_symbol": "MSFT",
+                    },
+                    {
+                        "event_family": "earnings",
+                        "event_status": "scheduled",
+                        "event_date": dt.date(2026, 7, 10),
+                        "underlying_symbol": "TSLA",
+                    },
+                ]
+            )
+
+    cfg = _cfg(
+        "eod-refresh",
+        tickers=["NVDA", "TSLA", "MSFT", "AAPL"],
+        scan_date=dt.date(2026, 5, 1),
+    )
+    tickers = daily_scan._resolve_dynamic_universe(cfg, _Store())
+
+    assert tickers == ["AAPL", "MSFT"]
+
+
+def test_dynamic_universe_falls_back_to_static() -> None:
+    class _Store:
+        def get_event_registry(self):
+            return pd.DataFrame([])
+
+    cfg = _cfg(
+        "eod-refresh",
+        tickers=["NVDA", "TSLA"],
+        scan_date=dt.date(2026, 5, 1),
+    )
+    tickers = daily_scan._resolve_dynamic_universe(cfg, _Store())
+
+    assert tickers == ["NVDA", "TSLA"]
+
+
 def test_safe_save_report_pre_market_filename(
     tmp_path: Path,
 ) -> None:

@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import logging
-import math
 
 import numpy as np
-from scipy import stats
 
 from event_vol_analysis.config import (
-    FAT_TAIL_MAX_DF,
     FAT_TAIL_MAX_EXCESS_KURTOSIS,
     FAT_TAIL_MIN_HISTORY_MOVES,
-    FAT_TAIL_MIN_DF,
     FAT_TAILS_ENABLED,
     MC_SIMULATIONS,
     MOVE_MODELS,
@@ -60,7 +56,7 @@ def _sample_innovations(
     target_excess_kurtosis: float | None,
     historical_sample_size: int,
 ) -> np.ndarray:
-    """Sample standardized innovations from normal or Student-t."""
+    """Sample standardized innovations from normal or jump mixture."""
     if model == "lognormal":
         return rng.standard_normal(simulations)
 
@@ -81,16 +77,25 @@ def _sample_innovations(
     ):
         return rng.standard_normal(simulations)
 
-    clipped_kurtosis = min(
-        float(target_excess_kurtosis),
-        FAT_TAIL_MAX_EXCESS_KURTOSIS,
-    )
-    nu = 4.0 + (6.0 / clipped_kurtosis)
-    nu = min(max(nu, FAT_TAIL_MIN_DF), FAT_TAIL_MAX_DF)
+    clipped_kurtosis = min(float(target_excess_kurtosis), FAT_TAIL_MAX_EXCESS_KURTOSIS)
 
-    t_samples = stats.t.rvs(df=nu, size=simulations, random_state=rng)
-    scale = math.sqrt(nu / (nu - 2.0))
-    return t_samples / scale
+    # Diffusion + jump mixture:
+    # - Base process: standard Gaussian diffusion
+    # - Jump process: low-probability, larger Gaussian shocks
+    # Parameters are calibrated from excess kurtosis proxy.
+    jump_probability = min(0.30, 0.03 + 0.04 * clipped_kurtosis)
+    jump_scale = min(4.0, 1.5 + 0.5 * clipped_kurtosis)
+
+    diffusion = rng.standard_normal(simulations)
+    jumps = rng.normal(0.0, jump_scale, size=simulations)
+    is_jump = rng.random(simulations) < jump_probability
+    mixed = np.where(is_jump, jumps, diffusion)
+
+    mixed = mixed - float(np.mean(mixed))
+    std = float(np.std(mixed))
+    if std <= 0.0:
+        return diffusion
+    return mixed / std
 
 
 def _validate(moves: np.ndarray, sigma_1d: float) -> None:

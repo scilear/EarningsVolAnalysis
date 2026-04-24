@@ -42,6 +42,32 @@ Still weak:
 
 ---
 
+## Now — Ranking Trust Hardening [P0]
+
+**Objective:** Fix structural integrity gaps in ranking before trusting for execution. Identified issues: scale mismatch (10-40x), fat-tail model inactive, TSLA expiry bug, no evidence gate for short-vol.
+
+| ID | Task | Status |
+|----|------|--------|
+| T045 | Ranking Trust Hardening — scale consistency + fat-tail model + TSLA fix + trust gate + DTE guardrail | completed |
+| T047 | Ranking Trust Hardening v2 — corrected approach (KS test, mixture model, DTE weighting) | completed |
+
+## Just Closed — EOD Throughput Hardening [P1]
+
+| ID | Task | Status |
+|----|------|--------|
+| T046 | Rate Limiting + Dynamic Earnings Universe for EOD | completed |
+
+**T047 corrects T045 based on adversarial review:**
+
+| Issue | T045 (rejected) | T047 (corrected) |
+|-------|-----------------|------------------|
+| Scale fix | Remove sqrt(252) | Quantile matching |
+| Fat-tailed | Student-t df 4-7 | Diffusion + jump mixture |
+| Trust gate | Ratio > 2.0 fails | KS test, continuous score |
+| DTE guardrail | 1-10 days only | DTE-dependent weighting |
+
+---
+
 ## Just Closed — Foundation Complete
 
 Infrastructure work (T019, T020, T021) completed. Batch runs now reliable and

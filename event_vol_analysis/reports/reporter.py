@@ -543,6 +543,24 @@ HTML_TEMPLATE = """\
       <td>{{ snapshot.trust_metrics.fat_tail_active }}</td>
     </tr>
     <tr>
+      <th>Trust Score</th>
+      <td>{{ "%.1f" | format(snapshot.trust_metrics.trust_score) }}</td>
+      <th>Mismatch Direction</th>
+      <td>{{ snapshot.trust_metrics.mismatch_direction }}</td>
+    </tr>
+    {% if snapshot.trust_metrics.simulated_abs_quantiles %}
+    <tr>
+      <th>Sim |Move| Q10/Q50/Q90</th>
+      <td>
+        {{ "%.2f" | format(snapshot.trust_metrics.simulated_abs_quantiles.p10 * 100) }}% /
+        {{ "%.2f" | format(snapshot.trust_metrics.simulated_abs_quantiles.p50 * 100) }}% /
+        {{ "%.2f" | format(snapshot.trust_metrics.simulated_abs_quantiles.p90 * 100) }}%
+      </td>
+      <th>Ref (implied)</th>
+      <td>{{ "%.2f" | format(snapshot.trust_metrics.implied_move * 100) }}%</td>
+    </tr>
+    {% endif %}
+    <tr>
       <th>Gate Status</th>
       <td>
         <strong>{{ snapshot.trust_metrics.status }}</strong>

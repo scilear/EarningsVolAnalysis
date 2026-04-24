@@ -19,6 +19,12 @@ MOVE_MODELS: tuple[str, str] = ("lognormal", "fat_tailed")
 # Ranking trust hardening
 TRUST_MISMATCH_WARN_THRESHOLD: float = 1.5
 TRUST_MISMATCH_FAIL_THRESHOLD: float = 2.0
+TRUST_SCORE_PASS_THRESHOLD: float = 70.0
+TRUST_SCORE_WARN_THRESHOLD: float = 45.0
+
+# yfinance rate limiting (fallback paths only)
+YF_RATE_LIMIT_MS: int = 200
+YF_MAX_RETRIES: int = 3
 
 # Short-vol guardrail (front expiry DTE window)
 SHORT_VOL_DTE_MIN: int = 1

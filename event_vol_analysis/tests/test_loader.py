@@ -4,6 +4,7 @@ import datetime as dt
 
 import pytest
 
+from event_vol_analysis.data import loader as loader_module
 from event_vol_analysis.data.loader import (
     EventDateResolution,
     get_dividend_yield,
@@ -199,3 +200,44 @@ class TestResolveNextEarningsDate:
         result = resolve_next_earnings_date("NVDA", today=dt.date(2026, 4, 21))
         assert result.status == "fetch_error"
         assert result.event_date is None
+
+
+def test_rate_limiter_applies_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(loader_module.config, "YF_RATE_LIMIT_MS", 200)
+    monkeypatch.setattr(loader_module, "_LAST_YF_REQUEST_MONOTONIC", 10.0)
+
+    ticks = iter([10.05, 10.20])
+    monkeypatch.setattr(loader_module.time, "monotonic", lambda: next(ticks))
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(loader_module.time, "sleep", lambda s: sleeps.append(s))
+
+    loader_module._throttle_yfinance()
+
+    assert sleeps == [pytest.approx(0.15, rel=1e-6)]
+
+
+def test_rate_limiter_retries_on_429(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(loader_module.config, "YF_MAX_RETRIES", 3)
+    monkeypatch.setattr(loader_module, "_throttle_yfinance", lambda: None)
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(loader_module.time, "sleep", lambda s: sleeps.append(s))
+
+    attempts = {"count": 0}
+
+    def _operation() -> str:
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise RuntimeError("429 Too Many Requests")
+        return "ok"
+
+    result = loader_module._execute_yfinance_call(
+        _operation,
+        ticker="AAPL",
+        action="history",
+    )
+
+    assert result == "ok"
+    assert attempts["count"] == 3
+    assert sleeps == [1.0, 2.0]
