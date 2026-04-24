@@ -55,6 +55,7 @@
 | T041 | CLI integration + agent skill update | P2 | T040 | completed |
 | T044 | EOD cache refresh + overnight analysis mode | P1 | T032 | completed |
 | T043 | Pre-market same-day earnings window | P1 | T032 | completed |
+| T046 | Rate limiting + dynamic earnings universe for EOD | P1 | T044 | pending |
 
 ## Dependency Chains
 
@@ -67,6 +68,7 @@
 - Decision Engine: `T027` → `T028` → `T029`
 - Calibration: `T027` → `T030` → `T031` → `T032`
 - Structure Advisor: `T022` → `T039` → `T040` → `T041`
+- Ranking Trust: `T021` + `T022` + `T044` → `T045`
 
 ## Detailed Specs
 
@@ -117,6 +119,7 @@ Each task is documented in its own atomic file: `tasks/task_XXX.md`
 | T041 | tasks/task_041.md | completed |
 | T043 | tasks/task_043.md | completed |
 | T044 | tasks/task_044.md | completed |
+| T045 | tasks/task_045.md | pending |
 
 ## Cross-Repo Ownership Notes
 

@@ -68,6 +68,87 @@ Reference commands:
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python scripts/regression_smoke_harness.py
 ```
 
+## Scheduled Workflows
+
+The system uses shell wrappers in `scripts/` for cron scheduling. All scripts use the project venv python.
+
+### Workflow Types
+
+| Mode | When to Run | Purpose |
+|------|-------------|---------|
+| `--mode eod-refresh` | 4:30 PM ET (16:30) | Capture closing option chains for overnight analysis |
+| `--mode overnight` | 8:00 AM ET (08:00) | Run analysis using cached EOD data (fallback to option_quotes if needed) |
+| `--mode pre-market` | 9:00 AM ET (09:00) | Same-day earnings before market open |
+| `--mode open-confirmation` | 9:45 AM ET (09:45) | Compare live vs overnight snapshot |
+
+### EOD Refresh (End of Day)
+
+Captures closing option chains. Critical for overnight mode to work.
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --mode eod-refresh \
+  --date 2026-04-24
+```
+
+Wrapper script:
+
+```bash
+./scripts/run_eod_refresh.sh
+```
+
+**Note**: If yfinance rate-limits, the script logs errors but continues. EOD data
+is stored in `option_quotes` table (not just snapshot metadata). The overnight
+fallback can use option_quotes directly if no snapshot metadata exists.
+
+### Overnight Analysis
+
+Runs analysis using cached data from prior EOD refresh. Falls back to latest
+available quotes from option_quotes if snapshot metadata is missing.
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --mode overnight \
+  --use-cache \
+  --date 2026-04-24
+```
+
+Wrapper script:
+
+```bash
+./scripts/run_overnight_scan.sh
+```
+
+### Cron Schedule (Recommended)
+
+Add to crontab for automated execution:
+
+```crontab
+# EOD refresh: capture closing chains at 4:30 PM ET (Mon-Fri)
+30 16 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && ./scripts/run_eod_refresh.sh >> logs/cron_eod.log 2>&1
+
+# Overnight analysis: 8:00 AM ET (Mon-Fri)
+0 8 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && ./scripts/run_overnight_scan.sh >> logs/cron_overnight.log 2>&1
+
+# Pre-market scan: 9:00 AM ET (Mon-Fri)
+0 9 * * 1-5 cd /home/fabien/Documents/EarningsVolAnalysis && ./scripts/run_pre_market_scan.sh >> logs/cron_premarket.log 2>&1
+```
+
+### Cache Validation
+
+Check which tickers have valid EOD snapshots before running overnight:
+
+```bash
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
+  -m event_vol_analysis.workflow.daily_scan \
+  --validate-cache \
+  --date 2026-04-24
+```
+
+Wrapper script includes `--validate-cache` automatically.
+
 ## Pre-Market Same-Day Scan (T043)
 
 Use when you want same-day earnings coverage before market open.
