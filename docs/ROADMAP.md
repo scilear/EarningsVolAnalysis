@@ -17,32 +17,49 @@ sits on top of a systematic answer, not in place of one.
 
 ## Current State
 
-Working now:
+*Last updated: 2026-04-25. All T023–T047 completed.*
 
-- Single-name and batch Analyze flows in `event_vol_analysis.main`
-- Regime classification (Vol Pricing via P75 ratio, Event Variance, Term
-  Structure, Dealer Gamma, Composite)
-- Strategy construction + Monte Carlo EV/CVaR/convexity scoring + ranking
-- Capital-normalized ranking and symmetric butterfly
-- Fat-tailed move distribution (calibrated, 18 tests passing)
-- Generic bridge payload emission (event/context/playbook)
-- Event-store backfill, replay, earnings/macro workbooks
+Working now (full decision engine):
+
+- Full 4-layer playbook: IVR/IVP dual classifier (T023), conditional expected
+  move with trimmed mean + 4Q recency + AMC/BMO split (T024), edge ratio
+  RICH/FAIR/CHEAP with confidence gate (T025), positioning proxy (OI
+  concentration, P/C ratio, drift, max pain) (T026)
+- TYPE 1–5 classifier (T027) wired to all four layers — deterministic,
+  no learned policy
+- Signal graph (T028): leader/follower tagging, signal decay detection;
+  sector/factor config covers consumer credit, semis, energy chains
+- 4-layer batch report with `--mode playbook-scan` (T029)
+- Calibration loop: outcome tracking (T030), weekly calibration report (T031)
+- Daily cron three-step: EOD refresh 22:30 CET → overnight analysis 00:30 CET
+  → open confirmation 15:45 CET (T032 + T043 + T044)
+- Ranking trust hardened: KS test, mixture model, DTE weighting (T045, T047)
+- Rate limiting + dynamic earnings universe (T046)
+- 494/496 tests passing
 
 Still weak:
 
-- IV Rank and IV Percentile not computed (regime uses P75 ratio, not IVR/IVP)
-- Conditional expected move not built (no trimmed mean, no 4Q recency
-  weighting, no AMC vs BMO split, no VIX quartile or peer dispersion
-  conditioning)
-- Edge ratio (Implied / Conditional Expected) not computed
-- Positioning proxy entirely absent
-- Signal graph (upstream/downstream chain) entirely absent
-- No TYPE 1–5 classification engine
-- No post-earnings outcome tracking or calibration loop
+- Signal graph config covers only ~15 tickers (3 chains); TYPE 4 signal
+  quality degrades for names outside consumer credit / semis / energy
+- 2 test failures (cwd-relative path issue): `test_config_loads_without_error`
+  and `test_update_script_runs_and_updates_record` — both pass when run from
+  project root; need `conftest.py` to set project root automatically
+- Calibration loop needs live outcome data before it produces meaningful
+  threshold adjustment recommendations (T031 infrastructure ready, no data yet)
 
 ---
 
-## Now — Ranking Trust Hardening [P0]
+## Now — Test Infrastructure + Signal Graph Expansion [P2]
+
+**Objective:** Two known gaps. Fix cwd-dependent test failures before they mask real failures. Expand signal graph config to cover the full earnings universe for reliable TYPE 4 classification.
+
+| ID | Task | Status |
+|----|------|--------|
+| T048 | Test infrastructure fix + signal graph config expansion | pending |
+
+---
+
+## Completed — Ranking Trust Hardening [P0]
 
 **Objective:** Fix structural integrity gaps in ranking before trusting for execution. Identified issues: scale mismatch (10-40x), fat-tail model inactive, TSLA expiry bug, no evidence gate for short-vol.
 
@@ -88,24 +105,13 @@ auto-ingested.
 
 ---
 
-## Now — Playbook Alignment (4-Layer Snapshot) [P1]
+## Completed — Playbook Alignment (4-Layer Snapshot) [T023–T026]
 
 **Objective:** replace generic regime output with the exact 4-layer snapshot
 defined in `earnings-playbook.md`. Each layer produces a label + confidence
 rating. Together they feed the TYPE classifier in the phase after.
 
-**Execution path (priority order):**
-
-1. **T023** — IV Rank + IV Percentile dual classifier (foundation for vol regime)
-2. **T024** — Conditional expected move (foundation for edge ratio)
-3. **T025** — Edge ratio (CHEAP/FAIR/RICH label with confidence)
-4. **T026** — Positioning proxy (weak signals, tiebreaker only)
-
-**Exit criteria:**
-
-- All four layers produce label + confidence per name
-- Batch report includes all four layers
-- Regression smoke tests pass
+**Status: all completed.**
 
 ### Task 023 — IV Rank + IV Percentile Dual Classifier
 
@@ -237,23 +243,12 @@ state. These are explicitly low-confidence tiebreakers, not primary signals.
 
 ---
 
-## Then — Decision Engine [P1]
+## Completed — Decision Engine [T027–T029]
 
 **Objective:** encode the playbook TYPE 1–5 conditions as a deterministic
 classifier. The tool outputs a TYPE, not a ranking of structures.
 
-**Execution path (depends on T023–T026):**
-
-1. **T027** — TYPE 1–5 classifier (gates decision engine; optional signal graph)
-2. **T028** — Signal graph (optional; upgrades T027 confidence for TYPE 4 only)
-3. **T029** — 4-layer batch report with --mode playbook-scan CLI flag
-
-**Exit criteria:**
-
-- All batch outputs include TYPE classification (1–5)
-- TYPE 5 rationale is always explicit (what condition prevented another type)
-- TYPE 4 gets Phase 2 checklist (not a trade instruction)
-- Report saves to `reports/daily/` with date in filename
+**Status: all completed.**
 
 ### Task 027 — TYPE 1–5 Classifier
 
