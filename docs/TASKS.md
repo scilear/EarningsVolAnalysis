@@ -58,7 +58,7 @@
 | T045 | Ranking Trust Hardening (scale consistency + fat-tail model + realized-vs-implied validation + TSLA fix) | P0 | T021,T022,T044 | completed | tasks/task_045_detailed.md |
 | T047 | Ranking Trust Hardening v2 — Corrected Approach (KS test, mixture model, DTE weighting) | P0 | T045 | completed | tasks/task_047.md |
 | T046 | Rate Limiting + Dynamic Earnings Universe for EOD | P1 | T044 | completed | tasks/task_046.md |
-| T048 | Test infrastructure fix + signal graph config expansion | P2 | T028 | pending | tasks/task_048.md |
+| T048 | Test infrastructure fix + signal graph config expansion | P2 | T028 | completed | tasks/task_048.md |
 
 ## Dependency Chains
 
