@@ -18,7 +18,7 @@ from event_vol_analysis.macro_outcomes import query_event_type_tail_rate
 class MacroWorkbookConfig:
     """Configuration for the macro ETF research workbook."""
 
-    db_path: str = "data/options_intraday.db"
+    db_path: str = "/mnt/Data/EVA/options_intraday.db"
     event_name: str = "cpi"
     proxy_symbol: str | None = None
     horizon_code: str = "h1_close"
@@ -28,7 +28,7 @@ class MacroWorkbookConfig:
     macro_event_type: str = "fomc"
     tail_threshold_sd: float = 1.0
     vix_quartile: int | None = None
-    macro_outcomes_dir: str = "data/macro_event_outcomes"
+    macro_outcomes_dir: str = "/mnt/Data/EVA/macro_event_outcomes"
 
 
 def load_macro_event_dataset(config: MacroWorkbookConfig) -> dict[str, pd.DataFrame]:
@@ -316,7 +316,7 @@ def main() -> None:
     """CLI entry point for the macro workbook."""
 
     parser = argparse.ArgumentParser(description="Macro ETF event workbook")
-    parser.add_argument("--db", default="data/options_intraday.db")
+    parser.add_argument("--db", default="/mnt/Data/EVA/options_intraday.db")
     parser.add_argument("--event-name", default="cpi")
     parser.add_argument("--proxy-symbol", default=None)
     parser.add_argument("--horizon", default="h1_close")
@@ -325,7 +325,7 @@ def main() -> None:
     parser.add_argument("--vix-quartile", type=int, default=None)
     parser.add_argument(
         "--macro-outcomes-dir",
-        default="data/macro_event_outcomes",
+        default="/mnt/Data/EVA/macro_event_outcomes",
     )
     parser.add_argument("--output-json", default=None)
     parser.add_argument("--output-md", default=None)

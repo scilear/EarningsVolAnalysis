@@ -273,7 +273,7 @@ class OptionsDataStore:
         connection: Active database connection (context manager)
     """
 
-    def __init__(self, db_path: str | Path = "data/options_intraday.db"):
+    def __init__(self, db_path: str | Path = "/mnt/Data/EVA/options_intraday.db"):
         """Initialize the data store.
 
         Args:
@@ -1283,7 +1283,7 @@ class OptionsDataStore:
         return True
 
 
-def create_store(db_path: str | Path = "data/options_intraday.db") -> OptionsDataStore:
+def create_store(db_path: str | Path = "/mnt/Data/EVA/options_intraday.db") -> OptionsDataStore:
     """Factory function to create a data store.
 
     Args:

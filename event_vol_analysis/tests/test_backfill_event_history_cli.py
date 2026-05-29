@@ -18,7 +18,7 @@ def test_cli_auto_earnings_mode(
 
     args = argparse.Namespace(
         manifest=None,
-        db="data/options_intraday.db",
+        db="/mnt/Data/EVA/options_intraday.db",
         auto_earnings=True,
         tickers="NVDA,TSLA",
         limit=5,
@@ -51,7 +51,7 @@ def test_cli_auto_earnings_mode(
 
     assert payload["events_created"] == 2
     assert captured["tickers"] == ["NVDA", "TSLA"]
-    assert captured["db_path"] == "data/options_intraday.db"
+    assert captured["db_path"] == "/mnt/Data/EVA/options_intraday.db"
     assert captured["limit"] == 5
     assert captured["on_or_after"].isoformat() == "2026-01-01"
 
@@ -61,7 +61,7 @@ def test_cli_manifest_mode_requires_manifest(
 ) -> None:
     args = argparse.Namespace(
         manifest=None,
-        db="data/options_intraday.db",
+        db="/mnt/Data/EVA/options_intraday.db",
         auto_earnings=False,
         tickers="NVDA",
         limit=8,

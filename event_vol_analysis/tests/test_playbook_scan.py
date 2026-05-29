@@ -602,7 +602,7 @@ class TestPlaybookScanIntegration:
             ticker_file=None,
             event_date="2026-05-28",
             output=None,
-            cache_dir="data/cache",
+            cache_dir="/mnt/Data/EVA/cache",
             use_cache=False,
             refresh_cache=False,
             seed=42,

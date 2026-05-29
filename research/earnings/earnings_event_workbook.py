@@ -17,7 +17,7 @@ from data.option_data_store import create_store
 class WorkbookConfig:
     """Configuration for the earnings research workbook."""
 
-    db_path: str = "data/options_intraday.db"
+    db_path: str = "/mnt/Data/EVA/options_intraday.db"
     ticker: str | None = None
     horizon_code: str = "h1_close"
     metric_version: str = "v1"
@@ -292,7 +292,7 @@ def main() -> None:
     """CLI entry point for the earnings workbook."""
 
     parser = argparse.ArgumentParser(description="Earnings event workbook")
-    parser.add_argument("--db", default="data/options_intraday.db")
+    parser.add_argument("--db", default="/mnt/Data/EVA/options_intraday.db")
     parser.add_argument("--ticker", default=None)
     parser.add_argument("--horizon", default="h1_close")
     parser.add_argument("--output-json", default=None)

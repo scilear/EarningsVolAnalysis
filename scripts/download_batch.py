@@ -100,7 +100,7 @@ def download_single_ticker(
 
 def download_batch(
     tickers: list[str],
-    db_path: str = "data/options_intraday.db",
+    db_path: str = "/mnt/Data/EVA/options_intraday.db",
     specific_expiry: str | None = None,
     max_workers: int = 5,
 ) -> list[dict[str, Any]]:

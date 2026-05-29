@@ -88,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--db",
-        default="data/options_intraday.db",
+        default="/mnt/Data/EVA/options_intraday.db",
         help="SQLite db path for event/options store.",
     )
     parser.add_argument(
@@ -656,7 +656,7 @@ def _run_overnight_analysis(cfg: ScanConfig) -> int:
 
         event_date = cfg.scan_date
         args_ns = argparse.Namespace(
-            cache_dir="data/cache",
+            cache_dir="/mnt/Data/EVA/cache",
             event_date=event_date.isoformat(),
             use_cache=True,
             refresh_cache=False,
@@ -1008,7 +1008,7 @@ def _run_playbook_scan_rows(
             cache_back2_expiry = back2_expiry.isoformat() if back2_expiry else None
 
         args_ns = argparse.Namespace(
-            cache_dir="data/cache",
+            cache_dir="/mnt/Data/EVA/cache",
             event_date=event_date.isoformat(),
             use_cache=True,
             refresh_cache=False,
@@ -1146,7 +1146,7 @@ def _apply_hard_filters(
                 chain = get_options_chain(
                     ticker,
                     front_expiry,
-                    cache_dir=Path("data/cache"),
+                    cache_dir=Path("/mnt/Data/EVA/cache"),
                     use_cache=True,
                     refresh_cache=False,
                 )
@@ -1206,7 +1206,7 @@ def _run_live_confirmation_summary(
         summary_path.unlink()
 
     args_ns = argparse.Namespace(
-        cache_dir="data/cache",
+        cache_dir="/mnt/Data/EVA/cache",
         event_date=cfg.scan_date.isoformat(),
         use_cache=False,
         refresh_cache=cfg.refresh_cache,

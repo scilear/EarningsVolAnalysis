@@ -100,7 +100,7 @@ def load_event_manifest(manifest_path: str | Path) -> list[dict[str, Any]]:
 def backfill_event_manifest(
     manifest_path: str | Path,
     *,
-    db_path: str = "data/options_intraday.db",
+    db_path: str = "/mnt/Data/EVA/options_intraday.db",
 ) -> dict[str, Any]:
     """Backfill one manifest into the additive event store."""
 
@@ -111,7 +111,7 @@ def backfill_event_manifest(
 def auto_ingest_earnings_calendar_db(
     tickers: list[str],
     *,
-    db_path: str = "data/options_intraday.db",
+    db_path: str = "/mnt/Data/EVA/options_intraday.db",
     limit: int = 8,
     on_or_after: date | None = None,
 ) -> dict[str, Any]:

@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--db",
-        default="data/options_intraday.db",
+        default="/mnt/Data/EVA/options_intraday.db",
         help="Path to SQLite database file.",
     )
     parser.add_argument(

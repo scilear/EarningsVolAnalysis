@@ -32,7 +32,7 @@ class CalibrationReport:
 
 
 def run_calibration_report(
-    db_path: Path | str = "data/options_intraday.db",
+    db_path: Path | str = "/mnt/Data/EVA/options_intraday.db",
     output_dir: Path | str = "reports/calibration",
 ) -> CalibrationReport:
     """Run calibration loop, print summary, and save markdown output."""

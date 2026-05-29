@@ -102,7 +102,7 @@ def compute_macro_conditioned_edge_ratio(
     event_type: str,
     vix_quartile: int | None = None,
     threshold_sd: float = 1.0,
-    data_dir: str = "data/macro_event_outcomes",
+    data_dir: str = "/mnt/Data/EVA/macro_event_outcomes",
 ) -> MacroConditionedEdgeRatio:
     """Compute macro-conditioned edge ratio using event-type tail evidence.
 

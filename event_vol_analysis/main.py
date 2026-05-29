@@ -524,7 +524,7 @@ def _short_vol_dte_weight(front_dte: int) -> float:
 def _short_vol_evidence_gate(
     ticker: str,
     *,
-    db_path: Path = Path("data/options_intraday.db"),
+    db_path: Path = Path("/mnt/Data/EVA/options_intraday.db"),
     lookback: int = 8,
 ) -> dict[str, object]:
     """Evaluate whether short-vol has historical implied-over-realized support."""
@@ -980,7 +980,7 @@ def main() -> None:
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="data/cache",
+        default="/mnt/Data/EVA/cache",
         help="Directory for cached option chains",
     )
     parser.add_argument(
@@ -2346,7 +2346,7 @@ def _resolve_event_timing_bucket(
     2) inferred dominant bucket from historical split counts
     """
 
-    db_path = Path("data/options_intraday.db")
+    db_path = Path("/mnt/Data/EVA/options_intraday.db")
     if db_path.exists():
         try:
             from data.option_data_store import create_store
@@ -2384,7 +2384,7 @@ def _resolve_event_timing_bucket(
 
 def _lookup_event_time_label(ticker: str, event_date: dt.date) -> str | None:
     """Return raw event_time_label from local registry when available."""
-    db_path = Path("data/options_intraday.db")
+    db_path = Path("/mnt/Data/EVA/options_intraday.db")
     if not db_path.exists():
         return None
     try:

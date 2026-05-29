@@ -16,7 +16,7 @@ from data.option_data_store import create_store
 class QCScaffoldConfig:
     """Configuration for exporting replay-ready event payloads to QuantConnect research."""
 
-    db_path: str = "data/options_intraday.db"
+    db_path: str = "/mnt/Data/EVA/options_intraday.db"
     event_family: str = "earnings"
     event_name: str | None = None
     underlying_symbol: str | None = None
@@ -268,7 +268,7 @@ def main() -> None:
     """CLI entry point."""
 
     parser = argparse.ArgumentParser(description="Export a QC replay scaffold payload.")
-    parser.add_argument("--db", default="data/options_intraday.db")
+    parser.add_argument("--db", default="/mnt/Data/EVA/options_intraday.db")
     parser.add_argument("--event-family", default="earnings")
     parser.add_argument("--event-name")
     parser.add_argument("--underlying-symbol")

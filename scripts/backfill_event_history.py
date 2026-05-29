@@ -52,7 +52,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--db",
-        default="data/options_intraday.db",
+        default="/mnt/Data/EVA/options_intraday.db",
         help="Path to the SQLite event/options store.",
     )
     parser.add_argument(

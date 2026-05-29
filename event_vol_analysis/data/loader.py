@@ -16,7 +16,7 @@ from event_vol_analysis import config
 from event_vol_analysis.config import BACK3_DTE_MIN, BACK3_DTE_MAX
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_CACHE_DB_PATH = Path("data/options_intraday.db")
+DEFAULT_CACHE_DB_PATH = Path("/mnt/Data/EVA/options_intraday.db")
 _LAST_YF_REQUEST_MONOTONIC: float | None = None
 
 

@@ -17,7 +17,7 @@ from event_vol_analysis import config
 
 LOGGER = logging.getLogger(__name__)
 
-DEFAULT_EVENT_DB_PATH = Path("data/options_intraday.db")
+DEFAULT_EVENT_DB_PATH = Path("/mnt/Data/EVA/options_intraday.db")
 
 
 @dataclass(frozen=True)

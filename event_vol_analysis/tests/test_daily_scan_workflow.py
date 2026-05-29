@@ -246,7 +246,7 @@ def _cfg(
 ) -> daily_scan.ScanConfig:
     return daily_scan.ScanConfig(
         tickers=tickers or ["AAPL"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/daily"),
         mode=mode,
         scan_date=scan_date or dt.date(2026, 5, 1),
@@ -334,7 +334,7 @@ def test_validate_cache_returns_coverage_table(
 
     cfg = daily_scan.ScanConfig(
         tickers=["AAPL", "MSFT"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/daily"),
         mode="full-window",
         scan_date=dt.date(2026, 5, 1),
@@ -449,7 +449,7 @@ def test_run_dispatch_eod_refresh(
 
     cfg = daily_scan.ScanConfig(
         tickers=["AAPL"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/daily"),
         mode="eod-refresh",
         scan_date=dt.date(2026, 5, 1),
@@ -502,7 +502,7 @@ def test_run_dispatch_open_confirmation(
 
     cfg = daily_scan.ScanConfig(
         tickers=["AAPL", "MSFT"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/confirmation"),
         mode="open-confirmation",
         scan_date=dt.date(2026, 5, 1),
@@ -539,7 +539,7 @@ def test_run_overnight_skips_ticker_without_cache(
 
     cfg = daily_scan.ScanConfig(
         tickers=["AAPL"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/overnight"),
         mode="overnight",
         scan_date=dt.date(2026, 5, 1),
@@ -579,7 +579,7 @@ def test_overnight_does_not_fallback_to_live_spot(
 
     cfg = daily_scan.ScanConfig(
         tickers=["AAPL"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/overnight"),
         mode="overnight",
         scan_date=dt.date(2026, 5, 1),
@@ -648,7 +648,7 @@ def test_apply_hard_filters_pre_market_uses_eod_cache(
 
     cfg = daily_scan.ScanConfig(
         tickers=["AAPL"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/pre-market"),
         mode="pre-market",
         scan_date=dt.date(2026, 5, 1),
@@ -707,7 +707,7 @@ def test_fetch_upcoming_events_pre_market_exact_date(
 
     cfg = daily_scan.ScanConfig(
         tickers=["AAPL"],
-        db_path="data/options_intraday.db",
+        db_path="/mnt/Data/EVA/options_intraday.db",
         output_dir=Path("reports/pre-market"),
         mode="pre-market",
         scan_date=dt.date(2026, 5, 1),

@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MACRO_OUTCOMES_DIR = Path("data/macro_event_outcomes")
+DEFAULT_MACRO_OUTCOMES_DIR = Path("/mnt/Data/EVA/macro_event_outcomes")
 ALLOWED_EVENT_TYPES = {
     "geopolitical",
     "fomc",

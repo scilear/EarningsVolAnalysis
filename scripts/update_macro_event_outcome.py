@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     query_parser.add_argument("--vix-quartile", type=int, default=None)
     query_parser.add_argument(
         "--data-dir",
-        default="data/macro_event_outcomes",
+        default="/mnt/Data/EVA/macro_event_outcomes",
     )
 
     return parser

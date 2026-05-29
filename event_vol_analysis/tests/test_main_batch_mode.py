@@ -18,7 +18,7 @@ def _base_args() -> argparse.Namespace:
         ticker_file=None,
         event_date=None,
         output=None,
-        cache_dir="data/cache",
+        cache_dir="/mnt/Data/EVA/cache",
         use_cache=False,
         refresh_cache=False,
         cache_only=False,

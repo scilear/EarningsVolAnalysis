@@ -230,7 +230,7 @@ Examples:
     
     parser.add_argument(
         "--db",
-        default="data/options_intraday.db",
+        default="/mnt/Data/EVA/options_intraday.db",
         help="Path to SQLite database (default: data/options_intraday.db)",
     )
     
