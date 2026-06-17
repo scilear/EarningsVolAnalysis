@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
 from data.option_data_store import create_store
 from event_vol_analysis.macro_outcomes import query_event_type_tail_rate
 
@@ -18,7 +19,7 @@ from event_vol_analysis.macro_outcomes import query_event_type_tail_rate
 class MacroWorkbookConfig:
     """Configuration for the macro ETF research workbook."""
 
-    db_path: str = "/mnt/Data/EVA/options_intraday.db"
+    db_path: str = str(OPTIONS_DB_PATH)
     event_name: str = "cpi"
     proxy_symbol: str | None = None
     horizon_code: str = "h1_close"
@@ -316,7 +317,7 @@ def main() -> None:
     """CLI entry point for the macro workbook."""
 
     parser = argparse.ArgumentParser(description="Macro ETF event workbook")
-    parser.add_argument("--db", default="/mnt/Data/EVA/options_intraday.db")
+    parser.add_argument("--db", default=str(OPTIONS_DB_PATH))
     parser.add_argument("--event-name", default="cpi")
     parser.add_argument("--proxy-symbol", default=None)
     parser.add_argument("--horizon", default="h1_close")

@@ -134,7 +134,7 @@ The auto-discovery feature uses yfinance earnings calendars. Key limitations:
 
 `--use-cache` lookup order is now:
 
-1. SQLite options store (`data/options_intraday.db`) for matching
+1. SQLite options store (`/mnt/Data/EVA/options_intraday.db`) for matching
    ticker + expiry (latest snapshot)
 2. CSV cache under `--cache-dir`
 3. live yfinance download
@@ -184,7 +184,7 @@ Single ticker:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   scripts/download_options_chain.py NVDA \
-  --db data/options_intraday.db
+  --db /mnt/Data/EVA/options_intraday.db
 ```
 
 Ticker file batch:
@@ -193,7 +193,7 @@ Ticker file batch:
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   scripts/download_options_chain.py \
   --ticker-file data/watchlists/earnings.txt \
-  --db data/options_intraday.db
+  --db /mnt/Data/EVA/options_intraday.db
 ```
 
 ### 3.2 Register/Backfill Events
@@ -204,7 +204,7 @@ Backfill a checked-in sample manifest:
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   scripts/backfill_event_history.py \
   research/earnings/sample_event_manifest_nvda_q1.json \
-  --db data/options_intraday.db
+  --db /mnt/Data/EVA/options_intraday.db
 ```
 
 Auto-ingest upcoming earnings rows:
@@ -215,7 +215,7 @@ Auto-ingest upcoming earnings rows:
   --auto-earnings \
   --tickers NVDA,TSLA,MSFT \
   --limit 8 \
-  --db data/options_intraday.db
+  --db /mnt/Data/EVA/options_intraday.db
 ```
 
 ### 3.3 Run Workbooks
@@ -225,7 +225,7 @@ Earnings workbook:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/earnings/earnings_event_workbook.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --ticker NVDA \
   --horizon h1_close
 ```
@@ -235,7 +235,7 @@ Macro workbook:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/macro/macro_event_workbook.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --event-name cpi \
   --proxy-symbol TLT \
   --horizon h1_close
@@ -248,7 +248,7 @@ JSON payload:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/quantconnect/quantconnect_replay_scaffold.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --event-family earnings \
   --underlying-symbol NVDA \
   --format json
@@ -259,7 +259,7 @@ LEAN algorithm stub:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/quantconnect/quantconnect_replay_scaffold.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --event-family earnings \
   --underlying-symbol NVDA \
   --format stub
@@ -270,7 +270,7 @@ Research notebook template:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/quantconnect/quantconnect_replay_scaffold.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --event-family earnings \
   --underlying-symbol NVDA \
   --format research
@@ -316,7 +316,7 @@ Macro binary outcomes commands:
 
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/macro/macro_event_workbook.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --event-name cpi \
   --proxy-symbol TLT \
   --macro-event-type fomc \

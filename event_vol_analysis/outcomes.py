@@ -10,9 +10,11 @@ from typing import Any
 import pandas as pd
 import yfinance as yf
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
+
 from data.option_data_store import create_store
 
-DEFAULT_DB_PATH = Path("/mnt/Data/EVA/options_intraday.db")
+DEFAULT_DB_PATH = OPTIONS_DB_PATH
 ALLOWED_PHASE1 = {
     "HELD_REPRICING",
     "POTENTIAL_OVERSHOOT",

@@ -12,6 +12,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
+
 from event_vol_analysis.outcomes import (  # noqa: E402
     ALLOWED_PHASE1,
     auto_populate_realized_move,
@@ -48,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--db",
-        default="/mnt/Data/EVA/options_intraday.db",
+        default=str(OPTIONS_DB_PATH),
         help="Path to SQLite store",
     )
     parser.add_argument(

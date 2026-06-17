@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
+
 from data.option_data_store import create_store
 from event_option_playbook.backfill import auto_ingest_earnings_calendar_db
 from event_vol_analysis import config
@@ -88,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--db",
-        default="/mnt/Data/EVA/options_intraday.db",
+        default=str(OPTIONS_DB_PATH),
         help="SQLite db path for event/options store.",
     )
     parser.add_argument(

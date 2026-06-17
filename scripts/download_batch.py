@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+
+from event_vol_analysis.config import OPTIONS_DB_PATH
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -100,7 +102,7 @@ def download_single_ticker(
 
 def download_batch(
     tickers: list[str],
-    db_path: str = "/mnt/Data/EVA/options_intraday.db",
+    db_path: str = str(OPTIONS_DB_PATH),
     specific_expiry: str | None = None,
     max_workers: int = 5,
 ) -> list[dict[str, Any]]:
@@ -242,8 +244,8 @@ Examples:
     
     parser.add_argument(
         "--db",
-        default="data/options_intraday.db",
-        help="Path to SQLite database (default: data/options_intraday.db)",
+        default=str(OPTIONS_DB_PATH),
+        help=f"Path to SQLite database (default: {OPTIONS_DB_PATH})",
     )
     
     parser.add_argument(

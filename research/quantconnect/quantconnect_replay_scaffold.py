@@ -9,6 +9,7 @@ from typing import Any
 
 import pandas as pd
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
 from data.option_data_store import create_store
 
 
@@ -16,7 +17,7 @@ from data.option_data_store import create_store
 class QCScaffoldConfig:
     """Configuration for exporting replay-ready event payloads to QuantConnect research."""
 
-    db_path: str = "/mnt/Data/EVA/options_intraday.db"
+    db_path: str = str(OPTIONS_DB_PATH)
     event_family: str = "earnings"
     event_name: str | None = None
     underlying_symbol: str | None = None
@@ -268,7 +269,7 @@ def main() -> None:
     """CLI entry point."""
 
     parser = argparse.ArgumentParser(description="Export a QC replay scaffold payload.")
-    parser.add_argument("--db", default="/mnt/Data/EVA/options_intraday.db")
+    parser.add_argument("--db", default=str(OPTIONS_DB_PATH))
     parser.add_argument("--event-family", default="earnings")
     parser.add_argument("--event-name")
     parser.add_argument("--underlying-symbol")

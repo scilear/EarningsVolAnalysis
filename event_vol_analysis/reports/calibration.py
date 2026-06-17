@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
+
 import pandas as pd
 
 from data.option_data_store import create_store
@@ -32,7 +34,7 @@ class CalibrationReport:
 
 
 def run_calibration_report(
-    db_path: Path | str = "/mnt/Data/EVA/options_intraday.db",
+    db_path: Path | str = OPTIONS_DB_PATH,
     output_dir: Path | str = "reports/calibration",
 ) -> CalibrationReport:
     """Run calibration loop, print summary, and save markdown output."""

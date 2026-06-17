@@ -62,7 +62,7 @@ download_log table
 
 ## Database Location
 
-Default: `data/options_intraday.db`
+Default: `/mnt/Data/EVA/options_intraday.db`
 
 ## Usage
 
@@ -88,7 +88,7 @@ python scripts/download_options_chain.py TSLA -v
 from data.option_data_store import create_store, OptionsDataStore
 
 # Create/connect to database
-store = create_store("data/options_intraday.db")
+store = create_store("/mnt/Data/EVA/options_intraday.db")
 
 # Download and store data (using the download script or custom code)
 # ... download logic here ...
@@ -156,7 +156,7 @@ If you need to scale beyond SQLite:
 
 1. **Export SQLite data:**
    ```bash
-   sqlite3 data/options_intraday.db .dump > options_export.sql
+   sqlite3 /mnt/Data/EVA/options_intraday.db .dump > options_export.sql
    ```
 
 2. **Import to PostgreSQL:**

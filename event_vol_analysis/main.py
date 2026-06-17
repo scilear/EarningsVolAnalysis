@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
+
 from event_option_playbook import (
     build_playbook_recommendation,
     snapshot_to_event_spec,
@@ -524,7 +526,7 @@ def _short_vol_dte_weight(front_dte: int) -> float:
 def _short_vol_evidence_gate(
     ticker: str,
     *,
-    db_path: Path = Path("/mnt/Data/EVA/options_intraday.db"),
+    db_path: Path = OPTIONS_DB_PATH,
     lookback: int = 8,
 ) -> dict[str, object]:
     """Evaluate whether short-vol has historical implied-over-realized support."""
@@ -2346,7 +2348,7 @@ def _resolve_event_timing_bucket(
     2) inferred dominant bucket from historical split counts
     """
 
-    db_path = Path("/mnt/Data/EVA/options_intraday.db")
+    db_path = OPTIONS_DB_PATH
     if db_path.exists():
         try:
             from data.option_data_store import create_store
@@ -2384,7 +2386,7 @@ def _resolve_event_timing_bucket(
 
 def _lookup_event_time_label(ticker: str, event_date: dt.date) -> str | None:
     """Return raw event_time_label from local registry when available."""
-    db_path = Path("/mnt/Data/EVA/options_intraday.db")
+    db_path = OPTIONS_DB_PATH
     if not db_path.exists():
         return None
     try:

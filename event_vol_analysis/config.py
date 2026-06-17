@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 TICKER: str = "NVDA"
+
+# Database paths
+OPTIONS_DB_PATH: Path = Path("/mnt/Data/EVA/options_intraday.db")
 HISTORY_YEARS: int = 5
 MC_SIMULATIONS: int = 100_000
 

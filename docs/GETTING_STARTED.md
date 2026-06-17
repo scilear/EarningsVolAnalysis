@@ -52,7 +52,7 @@ Backfill the checked-in sample event payload:
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   scripts/backfill_event_history.py \
   research/earnings/sample_event_manifest_nvda_q1.json \
-  --db data/options_intraday.db
+  --db /mnt/Data/EVA/options_intraday.db
 ```
 
 Then run the earnings workbook summary:
@@ -60,7 +60,7 @@ Then run the earnings workbook summary:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/earnings/earnings_event_workbook.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --ticker NVDA
 ```
 

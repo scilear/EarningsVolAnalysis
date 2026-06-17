@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
+
 import numpy as np
 import pandas as pd
 
@@ -206,7 +208,7 @@ def rr25_to_skew_25d(rr25: float | None) -> float | None:
 def load_atm_iv_history_from_store(
     ticker: str,
     *,
-    db_path: str | Path = "/mnt/Data/EVA/options_intraday.db",
+    db_path: str | Path = OPTIONS_DB_PATH,
     as_of_date: dt.date | None = None,
     lookback_days: int = 365,
     min_dte: int = 7,

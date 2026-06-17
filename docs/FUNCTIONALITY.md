@@ -173,7 +173,7 @@ Backfill manifest:
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   scripts/backfill_event_history.py \
   research/earnings/sample_event_manifest_nvda_q1.json \
-  --db data/options_intraday.db
+  --db /mnt/Data/EVA/options_intraday.db
 ```
 
 Auto-ingest earnings calendar rows:
@@ -183,7 +183,7 @@ Auto-ingest earnings calendar rows:
   scripts/backfill_event_history.py \
   --auto-earnings \
   --tickers NVDA,TSLA,MSFT \
-  --db data/options_intraday.db
+  --db /mnt/Data/EVA/options_intraday.db
 ```
 
 Earnings workbook:
@@ -191,7 +191,7 @@ Earnings workbook:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/earnings/earnings_event_workbook.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --ticker NVDA
 ```
 
@@ -200,7 +200,7 @@ Macro workbook:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/macro/macro_event_workbook.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --event-name cpi \
   --proxy-symbol TLT \
   --macro-event-type fomc \
@@ -233,7 +233,7 @@ QuantConnect scaffold:
 ```bash
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python \
   research/quantconnect/quantconnect_replay_scaffold.py \
-  --db data/options_intraday.db \
+  --db /mnt/Data/EVA/options_intraday.db \
   --event-family earnings \
   --underlying-symbol NVDA \
   --format json

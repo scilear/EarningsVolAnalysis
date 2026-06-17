@@ -20,9 +20,9 @@ Use this checklist for active event-season operation.
 Reference commands:
 
 ```bash
-/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python scripts/download_options_chain.py NVDA --db data/options_intraday.db
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python scripts/download_options_chain.py NVDA --db /mnt/Data/EVA/options_intraday.db
 /home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python -m event_vol_analysis.main --ticker NVDA --event-date 2026-05-28 --output reports/nvda_earnings_report.html
-/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python scripts/backfill_event_history.py research/earnings/sample_event_manifest_nvda_q1.json --db data/options_intraday.db
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python scripts/backfill_event_history.py research/earnings/sample_event_manifest_nvda_q1.json --db /mnt/Data/EVA/options_intraday.db
 ```
 
 ## Event Day
@@ -50,8 +50,8 @@ For macro binary catalysts, additionally:
 Reference commands:
 
 ```bash
-/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python research/earnings/earnings_event_workbook.py --db data/options_intraday.db --ticker NVDA --horizon h1_close
-/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python research/macro/macro_event_workbook.py --db data/options_intraday.db --event-name cpi --proxy-symbol TLT --horizon h1_close
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python research/earnings/earnings_event_workbook.py --db /mnt/Data/EVA/options_intraday.db --ticker NVDA --horizon h1_close
+/home/fabien/Documents/EarningsVolAnalysis/.venv/bin/python research/macro/macro_event_workbook.py --db /mnt/Data/EVA/options_intraday.db --event-name cpi --proxy-symbol TLT --horizon h1_close
 ```
 
 ## Red Flags (Stop and Review)

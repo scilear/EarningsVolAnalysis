@@ -14,6 +14,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from event_vol_analysis.config import OPTIONS_DB_PATH
+
 import pandas as pd
 
 LOGGER = logging.getLogger(__name__)
@@ -273,7 +275,7 @@ class OptionsDataStore:
         connection: Active database connection (context manager)
     """
 
-    def __init__(self, db_path: str | Path = "/mnt/Data/EVA/options_intraday.db"):
+    def __init__(self, db_path: str | Path = OPTIONS_DB_PATH):
         """Initialize the data store.
 
         Args:
@@ -1283,7 +1285,7 @@ class OptionsDataStore:
         return True
 
 
-def create_store(db_path: str | Path = "/mnt/Data/EVA/options_intraday.db") -> OptionsDataStore:
+def create_store(db_path: str | Path = OPTIONS_DB_PATH) -> OptionsDataStore:
     """Factory function to create a data store.
 
     Args:

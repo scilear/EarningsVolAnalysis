@@ -13,6 +13,8 @@ import argparse
 import logging
 import sys
 from datetime import datetime
+
+from event_vol_analysis.config import OPTIONS_DB_PATH
 from pathlib import Path
 from typing import Any
 
@@ -230,8 +232,8 @@ Examples:
     
     parser.add_argument(
         "--db",
-        default="/mnt/Data/EVA/options_intraday.db",
-        help="Path to SQLite database (default: data/options_intraday.db)",
+        default=str(OPTIONS_DB_PATH),
+        help=f"Path to SQLite database (default: {OPTIONS_DB_PATH})",
     )
     
     parser.add_argument(
