@@ -14,7 +14,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from event_vol_analysis.config import OPTIONS_DB_PATH
+from event_vol_analysis.config import DB_DRIVER, OPTIONS_DB_PATH, PG_DSN
 
 import pandas as pd
 
@@ -257,6 +257,224 @@ CREATE INDEX IF NOT EXISTS idx_earnings_outcomes_lookup
     ON earnings_outcomes(ticker, event_date);
 """
 
+# PostgreSQL-compatible DDL
+CREATE_TABLES_SQL_PG = """
+CREATE TABLE IF NOT EXISTS option_quotes (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    ticker TEXT NOT NULL,
+    expiry DATE NOT NULL,
+    strike DOUBLE PRECISION NOT NULL,
+    option_type TEXT NOT NULL CHECK(option_type IN ('call', 'put')),
+    bid DOUBLE PRECISION,
+    ask DOUBLE PRECISION,
+    mid DOUBLE PRECISION GENERATED ALWAYS AS ((bid + ask) / 2) STORED,
+    spread DOUBLE PRECISION GENERATED ALWAYS AS (ask - bid) STORED,
+    volume INTEGER,
+    open_interest INTEGER,
+    implied_volatility DOUBLE PRECISION,
+    underlying_price DOUBLE PRECISION NOT NULL,
+    days_to_expiry INTEGER NOT NULL,
+    data_quality TEXT GENERATED ALWAYS AS (
+        CASE
+            WHEN bid IS NULL OR ask IS NULL THEN 'missing'
+            WHEN bid = 0 AND ask = 0 THEN 'empty'
+            WHEN bid <= 0 OR ask <= 0 THEN 'invalid'
+            WHEN bid >= ask THEN 'inverted'
+            ELSE 'valid'
+        END
+    ) STORED,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(timestamp, ticker, expiry, strike, option_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_time_ticker ON option_quotes(timestamp, ticker);
+CREATE INDEX IF NOT EXISTS idx_expiry_lookup ON option_quotes(expiry, strike, option_type, timestamp);
+CREATE INDEX IF NOT EXISTS idx_dte_quality ON option_quotes(days_to_expiry, data_quality, timestamp);
+
+CREATE TABLE IF NOT EXISTS download_log (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ticker TEXT NOT NULL,
+    records_downloaded INTEGER NOT NULL,
+    records_valid INTEGER NOT NULL,
+    records_filtered INTEGER NOT NULL,
+    download_duration_seconds DOUBLE PRECISION,
+    error_message TEXT,
+    metadata TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_download_log_ticker ON download_log(ticker, timestamp);
+
+CREATE TABLE IF NOT EXISTS option_snapshots (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL,
+    ticker TEXT NOT NULL,
+    quality_tag TEXT NOT NULL DEFAULT 'unknown'
+        CHECK(quality_tag IN ('valid', 'partial', 'stale', 'zero', 'unknown')),
+    records_total INTEGER NOT NULL DEFAULT 0,
+    records_valid INTEGER NOT NULL DEFAULT 0,
+    records_invalid INTEGER NOT NULL DEFAULT 0,
+    expiry_set TEXT,
+    spot_price DOUBLE PRECISION,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(timestamp, ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_option_snapshots_lookup ON option_snapshots(ticker, timestamp);
+
+CREATE TABLE IF NOT EXISTS event_registry (
+    event_id TEXT PRIMARY KEY,
+    event_family TEXT NOT NULL,
+    event_name TEXT NOT NULL,
+    underlying_symbol TEXT NOT NULL,
+    proxy_symbol TEXT,
+    event_date DATE NOT NULL,
+    event_ts_utc TIMESTAMP,
+    event_time_label TEXT,
+    source_system TEXT NOT NULL,
+    source_ref TEXT,
+    event_status TEXT NOT NULL DEFAULT 'scheduled',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_registry_lookup
+    ON event_registry(event_family, event_name, underlying_symbol, event_date);
+
+CREATE TABLE IF NOT EXISTS event_snapshot_binding (
+    binding_id SERIAL PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    snapshot_label TEXT NOT NULL,
+    timing_bucket TEXT NOT NULL,
+    quote_ts TIMESTAMP NOT NULL,
+    ticker TEXT NOT NULL,
+    rel_trade_days_to_event INTEGER NOT NULL,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    selection_method TEXT NOT NULL,
+    selection_tolerance_minutes INTEGER NOT NULL DEFAULT 30,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, snapshot_label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_snapshot_binding_event
+    ON event_snapshot_binding(event_id, timing_bucket, rel_trade_days_to_event);
+
+CREATE TABLE IF NOT EXISTS event_surface_metrics (
+    metric_id SERIAL PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    snapshot_label TEXT NOT NULL,
+    quote_ts TIMESTAMP NOT NULL,
+    ticker TEXT NOT NULL,
+    spot DOUBLE PRECISION NOT NULL,
+    front_expiry DATE,
+    back_expiry DATE,
+    front_dte INTEGER,
+    back_dte INTEGER,
+    atm_iv_front DOUBLE PRECISION,
+    atm_iv_back DOUBLE PRECISION,
+    iv_ratio DOUBLE PRECISION,
+    implied_move_pct DOUBLE PRECISION,
+    event_variance_ratio DOUBLE PRECISION,
+    skew_25d_rr DOUBLE PRECISION,
+    skew_25d_bf DOUBLE PRECISION,
+    gex_proxy DOUBLE PRECISION,
+    liquidity_score DOUBLE PRECISION,
+    metric_version TEXT NOT NULL DEFAULT 'v1',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, snapshot_label, metric_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_surface_metrics_event
+    ON event_surface_metrics(event_id, snapshot_label);
+
+CREATE TABLE IF NOT EXISTS event_evaluation_horizon (
+    horizon_code TEXT PRIMARY KEY,
+    horizon_days INTEGER NOT NULL,
+    anchor_type TEXT NOT NULL,
+    description TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS event_realized_outcome (
+    outcome_id SERIAL PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    horizon_code TEXT NOT NULL REFERENCES event_evaluation_horizon(horizon_code),
+    pre_snapshot_label TEXT NOT NULL,
+    post_snapshot_label TEXT NOT NULL,
+    spot_pre DOUBLE PRECISION NOT NULL,
+    spot_post DOUBLE PRECISION NOT NULL,
+    realized_move_signed_pct DOUBLE PRECISION NOT NULL,
+    realized_move_abs_pct DOUBLE PRECISION NOT NULL,
+    rv_window_days INTEGER,
+    realized_vol_pct DOUBLE PRECISION,
+    iv_front_pre DOUBLE PRECISION,
+    iv_front_post DOUBLE PRECISION,
+    iv_change_abs DOUBLE PRECISION,
+    iv_change_pct DOUBLE PRECISION,
+    iv_crush_abs DOUBLE PRECISION,
+    iv_crush_pct DOUBLE PRECISION,
+    outcome_version TEXT NOT NULL DEFAULT 'v1',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, horizon_code, outcome_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_realized_outcome_event
+    ON event_realized_outcome(event_id, horizon_code);
+
+CREATE TABLE IF NOT EXISTS structure_replay_outcome (
+    replay_id SERIAL PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES event_registry(event_id),
+    structure_code TEXT NOT NULL,
+    entry_snapshot_label TEXT NOT NULL,
+    exit_horizon_code TEXT NOT NULL REFERENCES event_evaluation_horizon(horizon_code),
+    quantity_scale DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    assumptions_version TEXT NOT NULL,
+    pricing_model_version TEXT NOT NULL,
+    entry_cost DOUBLE PRECISION NOT NULL,
+    exit_value DOUBLE PRECISION NOT NULL,
+    realized_pnl DOUBLE PRECISION NOT NULL,
+    realized_pnl_pct DOUBLE PRECISION,
+    max_risk_at_entry DOUBLE PRECISION,
+    status TEXT NOT NULL DEFAULT 'ok',
+    status_detail TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, structure_code, entry_snapshot_label, exit_horizon_code, assumptions_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_structure_replay_outcome_event
+    ON structure_replay_outcome(event_id, structure_code, exit_horizon_code);
+
+CREATE TABLE IF NOT EXISTS earnings_outcomes (
+    id SERIAL PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    event_date DATE NOT NULL,
+    timing TEXT NOT NULL CHECK(timing IN ('AMC', 'BMO', 'UNKNOWN')),
+    analysis_timestamp TIMESTAMP NOT NULL,
+    predicted_type INTEGER NOT NULL CHECK(predicted_type BETWEEN 1 AND 5),
+    predicted_confidence TEXT NOT NULL,
+    edge_ratio_label TEXT NOT NULL,
+    edge_ratio_value DOUBLE PRECISION NOT NULL,
+    edge_ratio_confidence TEXT NOT NULL,
+    vol_regime_label TEXT NOT NULL,
+    implied_move DOUBLE PRECISION NOT NULL,
+    conditional_expected_move DOUBLE PRECISION NOT NULL,
+    realized_move DOUBLE PRECISION,
+    realized_move_direction TEXT CHECK(realized_move_direction IN ('UP', 'DOWN')),
+    realized_vs_implied_ratio DOUBLE PRECISION,
+    phase1_category TEXT CHECK(
+        phase1_category IN ('HELD_REPRICING', 'POTENTIAL_OVERSHOOT', 'NOT_ASSESSED')
+    ),
+    entry_taken INTEGER,
+    pnl_if_entered DOUBLE PRECISION,
+    outcome_complete INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(ticker, event_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_earnings_outcomes_lookup ON earnings_outcomes(ticker, event_date);
+"""
+
 DEFAULT_EVALUATION_HORIZONS = (
     ("h0_close", 0, "event_date", "Same-day close after the event"),
     ("h1_close", 1, "event_date", "First close after the event"),
@@ -264,47 +482,99 @@ DEFAULT_EVALUATION_HORIZONS = (
 )
 
 
-class OptionsDataStore:
-    """SQLite-based storage for options chain data.
+if DB_DRIVER == "postgres":
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 
-    Designed for low-frequency intraday collection (e.g., every 15 minutes)
-    across multiple tickers. Efficiently handles filtering of invalid quotes.
+    class _PGConnectionWrapper:
+        """Wraps a psycopg2 connection to mimic sqlite3.Connection interface."""
+
+        def __init__(self, pg_conn):
+            self._conn = pg_conn
+
+        def _cursor(self):
+            return self._conn.cursor(cursor_factory=RealDictCursor)
+
+        def execute(self, sql, params=None):
+            cur = self._cursor()
+            cur.execute(sql.replace("?", "%s"), params or ())
+            return cur
+
+        def executemany(self, sql, params_list):
+            cur = self._cursor()
+            cur.executemany(sql.replace("?", "%s"), params_list)
+            return cur
+
+        def executescript(self, sql_script):
+            cur = self._cursor()
+            for statement in sql_script.split(";"):
+                stmt = statement.strip()
+                if stmt:
+                    cur.execute(stmt)
+
+        def commit(self):
+            self._conn.commit()
+
+        def close(self):
+            self._conn.close()
+
+
+class OptionsDataStore:
+    """Storage for options chain data.
+
+    Supports SQLite (default) and PostgreSQL backends via DB_DRIVER config.
 
     Attributes:
-        db_path: Path to SQLite database file
-        connection: Active database connection (context manager)
+        db_path: Path to database file / identifier
     """
 
     def __init__(self, db_path: str | Path = OPTIONS_DB_PATH):
         """Initialize the data store.
 
         Args:
-            db_path: Path to SQLite database file. Creates parent dirs if needed.
+            db_path: Path to database file (SQLite) or identifier (PostgreSQL).
         """
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = Path(db_path) if DB_DRIVER == "sqlite" else db_path
+        if DB_DRIVER == "sqlite":
+            self.db_path = Path(db_path)
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_database()
 
     def _init_database(self) -> None:
         """Create tables and indexes if they don't exist."""
+        ddl = CREATE_TABLES_SQL if DB_DRIVER == "sqlite" else CREATE_TABLES_SQL_PG
         with self._get_connection() as conn:
-            conn.executescript(CREATE_TABLES_SQL)
-            conn.executemany(
-                """
-                INSERT OR IGNORE INTO event_evaluation_horizon
-                (horizon_code, horizon_days, anchor_type, description)
-                VALUES (?, ?, ?, ?)
-                """,
-                DEFAULT_EVALUATION_HORIZONS,
-            )
+            conn.executescript(ddl)
+            if DB_DRIVER == "sqlite":
+                conn.executemany(
+                    """
+                    INSERT OR IGNORE INTO event_evaluation_horizon
+                    (horizon_code, horizon_days, anchor_type, description)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    DEFAULT_EVALUATION_HORIZONS,
+                )
+            else:
+                conn.executemany(
+                    """
+                    INSERT INTO event_evaluation_horizon
+                    (horizon_code, horizon_days, anchor_type, description)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    DEFAULT_EVALUATION_HORIZONS,
+                )
             conn.commit()
             LOGGER.info(f"Database initialized: {self.db_path}")
 
     @contextmanager
     def _get_connection(self):
         """Context manager for database connections."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        if DB_DRIVER == "postgres":
+            conn = _PGConnectionWrapper(psycopg2.connect(PG_DSN))
+        else:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
         try:
             yield conn
         finally:

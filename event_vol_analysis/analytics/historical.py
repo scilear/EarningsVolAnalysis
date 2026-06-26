@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+from event_vol_analysis.config import DB_DRIVER, PG_DSN
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -475,27 +477,38 @@ def _load_event_timing_map(
 ) -> dict[dt.date, str | None]:
     """Load date->event_time_label map from local event registry."""
 
-    if not db_path.exists():
+    if DB_DRIVER == "sqlite" and not Path(db_path).exists():
         return {}
 
-    query = """
-        SELECT event_date, event_time_label
-        FROM event_registry
-        WHERE UPPER(underlying_symbol) = UPPER(?)
-          AND event_family = 'earnings'
-    """
+    if DB_DRIVER == "sqlite":
+        query = """
+            SELECT event_date, event_time_label
+            FROM event_registry
+            WHERE UPPER(underlying_symbol) = UPPER(?)
+              AND event_family = 'earnings'
+        """
+        conn = sqlite3.connect(db_path)
+    else:
+        import psycopg2
+        query = """
+            SELECT event_date, event_time_label
+            FROM event_registry
+            WHERE UPPER(underlying_symbol) = UPPER(%s)
+              AND event_family = 'earnings'
+        """
+        conn = psycopg2.connect(PG_DSN)
 
     try:
-        with sqlite3.connect(db_path) as conn:
-            frame = pd.read_sql_query(query, conn, params=[ticker.upper()])
+        frame = pd.read_sql_query(query, conn, params=[ticker.upper()])
     except Exception as exc:  # pragma: no cover
         LOGGER.warning(
-            "Could not load event timing metadata for %s from %s: %s",
+            "Could not load event timing metadata for %s: %s",
             ticker,
-            db_path,
             exc,
         )
         return {}
+    finally:
+        conn.close()
 
     if frame.empty:
         return {}

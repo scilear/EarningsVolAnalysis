@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
-from event_vol_analysis.config import OPTIONS_DB_PATH
+from event_vol_analysis.config import DB_DRIVER, OPTIONS_DB_PATH, PG_DSN
 
 import numpy as np
 import pandas as pd
@@ -220,52 +220,75 @@ def load_atm_iv_history_from_store(
     are found.
     """
 
-    db_file = Path(db_path)
-    if not db_file.exists():
-        return []
+    if DB_DRIVER == "sqlite":
+        db_file = Path(db_path)
+        if not db_file.exists():
+            return []
 
     end_date = as_of_date or dt.date.today()
     start_date = end_date - dt.timedelta(days=lookback_days)
 
-    query = """
-        SELECT
-            timestamp,
-            strike,
-            implied_volatility,
-            underlying_price,
-            days_to_expiry
-        FROM option_quotes
-        WHERE ticker = ?
-          AND timestamp >= ?
-          AND timestamp <= ?
-          AND data_quality = 'valid'
-          AND implied_volatility IS NOT NULL
-          AND underlying_price IS NOT NULL
-          AND days_to_expiry BETWEEN ? AND ?
-        ORDER BY timestamp ASC
-    """
+    if DB_DRIVER == "sqlite":
+        query = """
+            SELECT
+                timestamp,
+                strike,
+                implied_volatility,
+                underlying_price,
+                days_to_expiry
+            FROM option_quotes
+            WHERE ticker = ?
+              AND timestamp >= ?
+              AND timestamp <= ?
+              AND data_quality = 'valid'
+              AND implied_volatility IS NOT NULL
+              AND underlying_price IS NOT NULL
+              AND days_to_expiry BETWEEN ? AND ?
+            ORDER BY timestamp ASC
+        """
+        conn = sqlite3.connect(db_file)
+    else:
+        import psycopg2
+        query = """
+            SELECT
+                timestamp,
+                strike,
+                implied_volatility,
+                underlying_price,
+                days_to_expiry
+            FROM option_quotes
+            WHERE ticker = %s
+              AND timestamp >= %s
+              AND timestamp <= %s
+              AND data_quality = 'valid'
+              AND implied_volatility IS NOT NULL
+              AND underlying_price IS NOT NULL
+              AND days_to_expiry BETWEEN %s AND %s
+            ORDER BY timestamp ASC
+        """
+        conn = psycopg2.connect(PG_DSN)
 
     try:
-        with sqlite3.connect(db_file) as conn:
-            frame = pd.read_sql_query(
-                query,
-                conn,
-                params=[
-                    ticker.upper(),
-                    f"{start_date.isoformat()} 00:00:00",
-                    f"{end_date.isoformat()} 23:59:59",
-                    min_dte,
-                    max_dte,
-                ],
+        frame = pd.read_sql_query(
+            query,
+            conn,
+            params=[
+                ticker.upper(),
+                f"{start_date.isoformat()} 00:00:00",
+                f"{end_date.isoformat()} 23:59:59",
+                min_dte,
+                max_dte,
+            ],
             )
     except Exception as exc:  # pragma: no cover
         LOGGER.warning(
-            "Could not load ATM IV history for %s from %s: %s",
+            "Could not load ATM IV history for %s: %s",
             ticker,
-            db_file,
             exc,
         )
         return []
+    finally:
+        conn.close()
 
     if frame.empty:
         return []
