@@ -8,7 +8,7 @@ TICKER: str = "NVDA"
 
 # Database paths
 OPTIONS_DB_PATH: Path = Path("/mnt/Data/EVA/options_intraday.db")
-DB_DRIVER: str = "sqlite"  # "sqlite" or "postgres"
+DB_DRIVER: str = "postgres"  # "sqlite" or "postgres"
 PG_DSN: str = "host=/var/run/postgresql dbname=earningsvol user=fabien"
 HISTORY_YEARS: int = 5
 MC_SIMULATIONS: int = 100_000
