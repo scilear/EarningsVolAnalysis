@@ -1,5 +1,7 @@
 """Merge data/options_intraday.db into /mnt/Data/EVA/options_intraday.db.
 
+SQLite-only — will error if DB_DRIVER is 'postgres'.
+
 Usage:
   .venv/bin/python scripts/merge_options_db.py
 
@@ -13,6 +15,14 @@ import argparse
 import sqlite3
 import sys
 from pathlib import Path
+
+from event_vol_analysis.config import DB_DRIVER
+
+if DB_DRIVER == "postgres":
+    raise RuntimeError(
+        "merge_options_db.py is SQLite-only. "
+        "Set DB_DRIVER=sqlite in config.py to use this script."
+    )
 
 SRC = Path("data/options_intraday.db")
 DST = Path("/mnt/Data/EVA/options_intraday.db")

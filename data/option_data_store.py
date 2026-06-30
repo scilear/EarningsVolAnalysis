@@ -20,6 +20,13 @@ import pandas as pd
 
 LOGGER = logging.getLogger(__name__)
 
+
+def _is_duplicate_key(exc: Exception) -> bool:
+    if DB_DRIVER == "postgres":
+        import psycopg2
+        return isinstance(exc, psycopg2.errors.UniqueViolation)
+    return isinstance(exc, sqlite3.IntegrityError)
+
 # Schema definition
 CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS option_quotes (
@@ -699,13 +706,22 @@ class OptionsDataStore:
             ]
 
             with self._get_connection() as conn:
-                insert_df.to_sql(
-                    "option_quotes",
-                    conn,
-                    if_exists="append",
-                    index=False,
-                    method="multi",
-                )
+                if DB_DRIVER == "postgres":
+                    cols = ", ".join(insert_df.columns)
+                    placeholders = ", ".join(["?"] * len(insert_df.columns))
+                    sql = f"INSERT INTO option_quotes ({cols}) VALUES ({placeholders})"
+                    conn.executemany(
+                        sql,
+                        [tuple(row) for row in insert_df.itertuples(index=False)],
+                    )
+                else:
+                    insert_df.to_sql(
+                        "option_quotes",
+                        conn,
+                        if_exists="append",
+                        index=False,
+                        method="multi",
+                    )
                 records_inserted = len(insert_df)
 
         # Log download
@@ -1403,47 +1419,70 @@ class OptionsDataStore:
 
         try:
             with self._get_connection() as conn:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO earnings_outcomes (
-                        ticker,
-                        event_date,
-                        timing,
-                        analysis_timestamp,
-                        predicted_type,
-                        predicted_confidence,
-                        edge_ratio_label,
-                        edge_ratio_value,
-                        edge_ratio_confidence,
-                        vol_regime_label,
-                        implied_move,
-                        conditional_expected_move,
-                        outcome_complete
+                if DB_DRIVER == "postgres":
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO earnings_outcomes (
+                            ticker, event_date, timing, analysis_timestamp,
+                            predicted_type, predicted_confidence,
+                            edge_ratio_label, edge_ratio_value, edge_ratio_confidence,
+                            vol_regime_label, implied_move, conditional_expected_move,
+                            outcome_complete
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                        RETURNING id
+                        """,
+                        (
+                            normalized_ticker,
+                            normalized_date,
+                            normalized_timing,
+                            _serialize_datetime(analysis_timestamp),
+                            predicted_type,
+                            predicted_confidence,
+                            edge_ratio_label,
+                            edge_ratio_value,
+                            edge_ratio_confidence,
+                            vol_regime_label,
+                            implied_move,
+                            conditional_expected_move,
+                        ),
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                    """,
-                    (
-                        normalized_ticker,
-                        normalized_date,
-                        normalized_timing,
-                        _serialize_datetime(analysis_timestamp),
-                        predicted_type,
-                        predicted_confidence,
-                        edge_ratio_label,
-                        edge_ratio_value,
-                        edge_ratio_confidence,
-                        vol_regime_label,
-                        implied_move,
-                        conditional_expected_move,
-                    ),
-                )
+                    new_id = cursor.fetchone()[0]
+                else:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO earnings_outcomes (
+                            ticker, event_date, timing, analysis_timestamp,
+                            predicted_type, predicted_confidence,
+                            edge_ratio_label, edge_ratio_value, edge_ratio_confidence,
+                            vol_regime_label, implied_move, conditional_expected_move,
+                            outcome_complete
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                        """,
+                        (
+                            normalized_ticker,
+                            normalized_date,
+                            normalized_timing,
+                            _serialize_datetime(analysis_timestamp),
+                            predicted_type,
+                            predicted_confidence,
+                            edge_ratio_label,
+                            edge_ratio_value,
+                            edge_ratio_confidence,
+                            vol_regime_label,
+                            implied_move,
+                            conditional_expected_move,
+                        ),
+                    )
+                    new_id = cursor.lastrowid
                 conn.commit()
-        except sqlite3.IntegrityError as exc:
-            raise ValueError(
-                f"Prediction already exists for {normalized_ticker} {normalized_date}."
-            ) from exc
+        except Exception as exc:
+            if _is_duplicate_key(exc):
+                raise ValueError(
+                    f"Prediction already exists for {normalized_ticker} {normalized_date}."
+                ) from exc
+            raise
 
-        return int(cursor.lastrowid)
+        return int(new_id)
 
     def update_earnings_outcome(
         self,
