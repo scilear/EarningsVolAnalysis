@@ -295,10 +295,6 @@ CREATE TABLE IF NOT EXISTS option_quotes (
     UNIQUE(timestamp, ticker, expiry, strike, option_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_time_ticker ON option_quotes(timestamp, ticker);
-CREATE INDEX IF NOT EXISTS idx_expiry_lookup ON option_quotes(expiry, strike, option_type, timestamp);
-CREATE INDEX IF NOT EXISTS idx_dte_quality ON option_quotes(days_to_expiry, data_quality, timestamp);
-
 CREATE TABLE IF NOT EXISTS download_log (
     id SERIAL PRIMARY KEY,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -498,6 +494,10 @@ if DB_DRIVER == "postgres":
 
         def __init__(self, pg_conn):
             self._conn = pg_conn
+            self._conn.autocommit = True
+            # Ensure unqualified table names go to public schema
+            with self._conn.cursor() as cur:
+                cur.execute("SET search_path TO public")
 
         def _cursor(self):
             return self._conn.cursor(cursor_factory=RealDictCursor)
